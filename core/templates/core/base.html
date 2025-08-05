@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %} Reyes Estancias {% endblock %} </title>
+    {% load static %}
+</head>
+<body>
+    <div>
+        <nav class="">
+            <img src="{% static 'core/img/logo.png' %}" alt="logo">
+            <a href="">Propiedades</a>
+            <a href="">Sobre Nosotros</a>
+            <a href="">Contacto</a>
+            <a href="">Sign In</a>
+        </nav>
+    </div>
+    {% block content %}{% endblock %}
+</body>
+</html>
