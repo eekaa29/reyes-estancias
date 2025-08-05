@@ -10,7 +10,7 @@ class Booking(models.Model):
     ("confirmed", "Confirmado" ),
     ("cancelled", "Cancelado")
     ]
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="bookings"),
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="bookings")
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="bookings")
     person_num = models.IntegerField(verbose_name="Cant.Personas")
     arrival = models.DateTimeField(verbose_name="LLegada")
@@ -20,6 +20,6 @@ class Booking(models.Model):
     class Meta():
         verbose_name = "Reserva"
         verbose_name_plural = "Reservas"
-        
+
     def __str__(self):
         return f"{self.property.name} - {self.user.username} - ({self.arrival} => {self.departure})"
