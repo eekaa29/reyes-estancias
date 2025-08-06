@@ -126,7 +126,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
 TIME_ZONE = 'UTC'
 
@@ -152,3 +152,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #Auth
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "home"
+
+#Email config
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'sandbox.smtp.mailtrap.io'
+EMAIL_HOST_USER = '60087be488e921'
+EMAIL_HOST_PASSWORD = '0864f324b74a3d'
+EMAIL_PORT = '2525'
+EMAIL_USE_TLS = True
+DEFAULT_FROM_EMAIL = 'no-reply@reyesestancias.com'
