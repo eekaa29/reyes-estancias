@@ -17,11 +17,16 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
-from core import urls
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path("", include("core.urls"))
+    path("", include("core.urls")),
+    path("properties/", include("properties.urls")),
+    path("bookings/", include("bookings.urls")),
+    #Auth
+    path("accounts/", include("django.contrib.auth.urls")),
+    path("accounts/", include("registration.urls")),
+
 ]
 #1-IMPORTANTE=> Si paso las urls de la manera en la que lo he hecho con pages, a la hora de acceder a esos paths en los templates tengo que ponerlo así=> {% url 'pages:nombre_de_url' %}
 #2-IMPORTANTE=> Si paso las urls de la manera en la que lo he hecho con profiles, a la hora de acceder a esos paths en los templates tengo que poner el nombre de la url directamente. 

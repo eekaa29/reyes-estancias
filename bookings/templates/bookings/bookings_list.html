@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Mis Reservas{% endblock %}
+{% block content %}
+    
+        {% for booking in booking_list %}
+            {{ booking }}
+            {{ booking.payment.get_status_display }}
+        {% empty %}
+            <h1>No hay ninguna reserva en este momento</h1>
+            <a href="{% url 'property_list' %}" >Reservar</a>
+        {% endfor %}
+    
+{% endblock %}

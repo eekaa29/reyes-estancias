@@ -1,0 +1,9 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block content %}
+    <h1>Lista de Propiedades</h1>
+    {% for property in property_list %}
+        {{property.name}}
+        <a href="{% url 'property_detail' property.id %}">Saber Más</a>
+    {%  endfor %}
+{% endblock %}

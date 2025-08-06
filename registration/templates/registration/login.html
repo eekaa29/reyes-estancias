@@ -1,0 +1,18 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Login{% endblock %}
+{% block content %}
+    <form action="" method="post">{% csrf_token %}
+        <h1>Inico de Sesión</h1>
+        {% if 'register' in request.GET %}
+            <p class="text-green-400">Usuario creado correctamente, Inicie Sesión para realizar la reserva</p>
+        {% endif %}
+        {% if form.non_field_errors %}
+            <p class="text-red-600">Usuario o contraseña incorrectos, pruebe de nuevo</p>
+        {% endif %}
+        <input type="text" name="username" placeholder="Username">
+        <input type="password" name="password" placeholder="Password">
+        <input type="submit" value="Acceder">
+    </form>
+    
+{% endblock %}
