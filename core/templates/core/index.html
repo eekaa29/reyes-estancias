@@ -2,4 +2,11 @@
 {% load static %}
 {% block content %}
     <h1>Hola</h1>
+    <form action="{% url 'property_list' %}" method="get">
+        {% csrf_token %}
+        <input type="date" name="checkin" placeholder="Llegada" required>
+        <input type="date" name="checkout" placeholder="Salida" required>
+        <input type="number" name="cant_personas" placeholder="Cant. Personas" required>
+        <button type="submit">Buscar</button>
+    </form>
 {% endblock %}

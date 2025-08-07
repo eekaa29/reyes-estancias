@@ -12,7 +12,7 @@
             <img src="{% static 'core/img/logo.png' %}" alt="logo">
             <a href="{% url 'property_list' %}">Propiedades</a>
             <a href="{% url 'about_us' %}">Sobre Nosotros</a>
-            <a href="{% url 'bookins_list' %}">Mis Reservas</a>
+            <a href="{% url 'bookings_list' %}">Mis Reservas</a>
             {% if not request.user.is_authenticated %}
                 <a href="{% url 'login' %}">Iniciar Sesión</a>
             {% else %}

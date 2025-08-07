@@ -13,6 +13,7 @@
         <input type="text" name="username" placeholder="Username">
         <input type="password" name="password" placeholder="Password">
         <input type="submit" value="Acceder">
+        <p>He olvidado mi contraseña<a href="{% url 'password_reset' %}">Recuperar contraseña</a></p>
         <p>No tienes una cuenta?<a href="{% url 'signup' %}">Registrate</a></p>
     </form>
     

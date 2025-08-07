@@ -10,5 +10,6 @@
             <h1>No hay ninguna reserva en este momento</h1>
             <a href="{% url 'property_list' %}" >Reservar</a>
         {% endfor %}
+        <p>Si quieres cambiar tu contraseña<a href="{% url 'password_change' %}">Pulsa aquí</a></p>
     
 {% endblock %}

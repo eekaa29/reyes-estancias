@@ -3,7 +3,19 @@
 {% block content %}
     <h1>Lista de Propiedades</h1>
     {% for property in property_list %}
-        {{property.name}}
+        <h1>{{property.name}}</h1>
+        <h2>{{property.description}}</h2>
+        <p>{{property.max_people}}</p>
+        {% if checkin and checkout and cant_personas %}
+            {% if property.available %}
+                <span>Disponible</span>
+                <a href="{% url 'property_detail' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+            {% else %}
+                <span>No Disponible</span>
+            {% endif %}
+        {% else %}
+        <a href="#">Consultar fechas</a>
+        {% endif %}
         <a href="{% url 'property_detail' property.id %}">Saber Más</a>
     {%  endfor %}
 {% endblock %}
