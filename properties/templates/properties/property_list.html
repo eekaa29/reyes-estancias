@@ -14,8 +14,7 @@
                 <span>No Disponible</span>
             {% endif %}
         {% else %}
-        <a href="#">Consultar fechas</a>
+            <a href="{% url 'property_detail' property.id %}">Saber Más</a>
         {% endif %}
-        <a href="{% url 'property_detail' property.id %}">Saber Más</a>
     {%  endfor %}
 {% endblock %}

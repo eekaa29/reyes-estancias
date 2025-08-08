@@ -11,8 +11,11 @@ class Property (models.Model):
     longitude = models.FloatField(blank=True, null= True, verbose_name="Altitud")
 
     def is_available(self, checkin, checkout, cant_personas):
-        checkin = make_aware(datetime.strptime(checkin, "%Y-%m-%d"))
-        checkout = make_aware(datetime.strptime(checkout, "%Y-%m-%d"))
+        try:
+            checkin = make_aware(datetime.strptime(checkin, "%Y-%m-%d"))
+            checkout = make_aware(datetime.strptime(checkout, "%Y-%m-%d"))
+        except:
+            return False
 
         if not checkin or not checkout:
             return False
