@@ -9,7 +9,7 @@
         {% if checkin and checkout and cant_personas %}
             {% if property.available %}
                 <span>Disponible</span>
-                <a href="{% url 'property_detail' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+                <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
             {% else %}
                 <span>No Disponible</span>
             {% endif %}

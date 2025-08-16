@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+  <body style="font-family: Arial, sans-serif;">
+    <h2>Completa tu pago pendiente</h2>
+    <p>Hola {{ user.first_name|default:user.username }},</p>
+    <p>
+      Tienes un saldo pendiente de <strong>${{ booking.balance_due }} MXN</strong> 
+      para tu reserva <strong>#{{ booking.id }}</strong> en <strong>{{ booking.property.name }}</strong>
+      ({{ booking.arrival|date:"Y-m-d" }} → {{ booking.departure|date:"Y-m-d" }}).
+    </p>
+    <p>
+      Por favor, completa el pago haciendo clic en el siguiente botón:
+    </p>
+    <p>
+      <a href="{{ pay_url }}" 
+         style="background:#0f766e;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;display:inline-block">
+         Pagar ahora
+      </a>
+    </p>
+    <p style="color:#666;font-size:12px">
+      Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+      {{ pay_url }}
+    </p>
+    <hr>
+    <p style="color:#999;font-size:12px">Gracias por elegirnos.</p>
+  </body>
+</html>

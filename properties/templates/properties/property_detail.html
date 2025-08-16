@@ -7,13 +7,7 @@
         {{property.max_people}}
         {% if checkin and checkout and cant_personas %}
             <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
-            <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}" >Proceder al pago</a>
-            {% comment %} <h3>Cambio de fechas</h3>
-            <p>Compruebe disponibilidad para otras fechas</p>
-            <form method="post">{% csrf_token %}
-                {{form.as_p}}
-                <button type="submit">Comprobar Disponibilidad</button>
-            </form> {% endcomment %}
+            <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
         {% else %}
             <h3>Selecciona fechas para comprobar disponibilidad</h3>
             <form method="post">
