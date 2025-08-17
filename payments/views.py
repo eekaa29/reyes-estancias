@@ -16,6 +16,7 @@ from bookings.models import Booking
 from .models import Payment
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
+from .services import *
 # Create your views here.
 
 assert settings.STRIPE_SECRET_KEY, "STRIPE_SECRET_KEY no está cargada (None/vacía)"
@@ -75,13 +76,23 @@ class StartCheckoutView(LoginRequiredMixin, View):
             booking.save(update_fields=fields_to_update)
 
         payment = (booking.payments
-                .filter(payment_type="deposit")
+                .filter(payment_type=["deposit"])
                 .order_by("-created_at")
                 .first())
         #Crear registro del pago (deposit)
         if payment and payment.status == "paid":
             messages.info(request, "El depósito ya está pagado.")
             return redirect("bookings_list")
+        
+        if not payment:
+            orphan = (booking.payments.filter(payment_type="").order_by("-created_at").first())
+            if orphan:
+                payment = orphan
+                payment.payment_type = "deposit"
+                payment.amount = deposit
+                payment.currency="MXN"
+                payment.status = "pending"
+                payment.save(update_fields=["payment_type", "amount", "currency", "status"])
 
         if not payment or payment.status not in ("pending", "requires_action"):
             payment = Payment.objects.create(
@@ -96,6 +107,7 @@ class StartCheckoutView(LoginRequiredMixin, View):
             if payment.amount != deposit:
                 payment.amount = deposit
                 payment.save(update_fields=["amount"])
+
 
         success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
         cancel_url = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
@@ -139,7 +151,7 @@ class StartCheckoutView(LoginRequiredMixin, View):
         )
         #Actualizamos el modelo payment con la info que acabamos de crear (solo nos faltaba el stripe_payment_intent_id)
         payment.stripe_checkout_session_id = session.id
-        payment.save(update_fields=["stripe_payment_intent_id", "stripe_checkout_session_id"])
+        payment.save(update_fields=["stripe_checkout_session_id"])
 
         return redirect(session.url)
     
@@ -257,53 +269,22 @@ class StartBalanceCheckoutView(LoginRequiredMixin, View):
             messages.error(request, "No hay método de pago guardado para ejecutar el pago")
             return redirect("booking_detail", kwargs={"pk":"booking_datils"})
         
-        #Crear instancia en payment
-        payment = Payment.objects.create(
-            booking=booking,
-            payment_type="balance",
-            status="pending",
-            amount=booking.balance_due,
-            currency="MXN",
-        )
+        result = charge_balance_offsession_or_send_checkout(booking, request)
 
-        #Crear intento de pago
-        try:
-            intent = stripe.PaymentIntent.create(
-                amount=to_cents(booking.balance_due),
-                currency="mxn",
-                customer=booking.stripe_customer_id,
-                payment_method=booking.stripe_payment_method_id,
-                off_session=True,
-                confirm=True,
-                metadata={
-                    "booking_id": str(booking.id),
-                    "payment_id" : str(payment.id),
-                    "type": "balance",
-                },
-                description=f"Saldo reserva · {booking.property.name}",
-            )
-            payment.stripe_payment_intent_id = intent.id
+        status = result["status"]
+        if status == "paid":
+            messages.success(request, "Saldo cobrado correctamente.")
+            return redirect("bookings_list")
 
-            if intent.status == "succeeded":
-                messages.success(request, "Pago completado")
-                payment.status = "paid"
-                booking.status = "confirmed"
-            else:
-                payment.status = "requires_action"
-                booking.status = "pending"
-                payment.stripe_payment_intent_id = intent.id
-                messages.error(request, "Pago no existoso, requiere intervención")
-            
-            payment.save(update_fields=["stripe_payment_intent_id", "status"])
-            booking.save(update_fields=["status"])
+        if status == "requires_action":
+            return redirect(result["checkout_url"])
 
-        except stripe.error.CardError as e:
-            payment.status = "failed"
-            payment.save(update_fields=["status"])
-            user_message = e.user_message
-            code = e.code
+        if status == "already_paid":
+            messages.info(request, "El saldo ya estaba pagado.")
+            return redirect("bookings_list")
 
-        return redirect("bookings_list") 
+        messages.error(request, "No se pudo cobrar el saldo.")
+        return redirect("bookings_list")
 
 class RetryDepositPaymentView(LoginRequiredMixin, View):
     '''Reintento de depósito en caso de fallo'''

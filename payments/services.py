@@ -4,6 +4,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 from django.core.mail import send_mail
 from django.urls import reverse
+from django.db import transaction
 
 from .models import Payment
 
@@ -12,22 +13,41 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 def _to_cents(mx: Decimal) -> int:
     return int((mx * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-def charge_balance_offsession_or_send_checkout(booking, request_base_url: str) -> str:
+def ensure_balance_payment(booking):
+    with transaction.atomic():
+        p = (booking.payments
+             .select_for_update()
+             .filter(payment_type="balance", status__in=["pending","requires_action"])
+             .order_by("-id")
+             .first())
+        if p:
+            if p.amount != booking.balance_due:
+                p.amount = booking.balance_due
+                p.save(update_fields=["amount"])
+            return p
+
+        return Payment.objects.create(
+            booking=booking,
+            payment_type="balance",
+            status="pending",
+            amount=booking.balance_due,
+            currency="MXN",
+        )
+
+def charge_balance_offsession_or_send_checkout(booking, request):
     """
     Intenta cobrar el saldo (70%) off-session. Si falla, crea Checkout Session y envía email con el link.
     Retorna un string corto con el resultado: "succeeded" | "requires_action" | "failed".
     """
 
+    payment = ensure_balance_payment(booking)
+
+    if payment.status == "paid":
+        return {"status": "already_paid", "payment": payment}
+
     if not booking.balance_due or booking.balance_due <= 0:
         return "No hay saldo a cobrar"
     
-    payment= Payment.objects.create(
-        booking=booking,
-        payment_type="balance",
-        amount=booking.balance_due,
-        currency="MXN",
-        status="pending",
-    )
 
     try:
         intent = stripe.PaymentIntent.create(
@@ -49,7 +69,7 @@ def charge_balance_offsession_or_send_checkout(booking, request_base_url: str) -
         if intent.status == "succeeded":
             payment.status = "paid"
             payment.save(update_fields=["stripe_payment_intent_id", "status"])
-            return "succeeded"
+            return {"status": "paid", "payment": payment, "intent_id": intent.id}
         
         
         #Si no se puede:
@@ -65,8 +85,8 @@ def charge_balance_offsession_or_send_checkout(booking, request_base_url: str) -
     #Si no ha entrado en el if de arriba, significa que no se ha podido realizar el pago,
     #  creamos sesión y le mandamos link paga que pague manualmente
 
-    success_url = f"{request_base_url}{reverse('payment_success')}?booking_id={booking.id}"
-    cancel_url  = f"{request_base_url}{reverse('payments_cancel')}?booking_id={booking.id}"
+    success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
+    cancel_url  = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
 
     session = stripe.checkout.Session.create(
         mode="payment",
@@ -87,9 +107,10 @@ def charge_balance_offsession_or_send_checkout(booking, request_base_url: str) -
         }],
         metadata={"booking_id": str(booking.id), "payment_id": str(payment.id), "type": "balance"},
     )
-    payment.stripe_payment_intent_id = session.payment_intent
+    #payment.stripe_payment_intent_id = session.payment_intent
+    payment.status = "requires_action"
     payment.stripe_checkout_session_id = session.id
-    payment.save(update_fields=["stripe_payment_intent_id", "stripe_checkout_session_id"])
+    payment.save(update_fields=["stripe_payment_intent_id", "stripe_checkout_session_id", "status"])
 
     
     #Enviamos email
@@ -110,4 +131,4 @@ def charge_balance_offsession_or_send_checkout(booking, request_base_url: str) -
         fail_silently=False,
     )
 
-    return "requires action"
+    return {"status": "requires_action", "payment": payment, "intent_id": intent.id, "checkout_url": session.url}

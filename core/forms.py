@@ -16,10 +16,6 @@ class HomeSearchForm(forms.Form):
 
         if not checkin or not checkout:
             return cleaned
-        '''if is_naive(checkin):
-            checkin = make_aware(checkin)
-        if is_naive(checkout):
-            checkout = make_aware(checkout)'''
         if checkin and checkout:
             cleaned["checkin"] = make_aware(datetime.combine(checkin, time(15, 0)))
             cleaned["checkout"] = make_aware(datetime.combine(checkout, time(12, 0)))
@@ -27,5 +23,5 @@ class HomeSearchForm(forms.Form):
                 raise(ValidationError("La fecha de salida debe ser posterior a la de llegada"))
             elif checkin < date.today():
                 raise(ValidationError("La fecha de llegada no puede ser anterior al día de hoy"))
-    
+
         return cleaned
