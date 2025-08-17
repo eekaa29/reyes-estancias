@@ -1,6 +1,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
-from datetime import date
+from datetime import date, timedelta
 from django.utils.timezone import make_aware, is_naive
 
 class BookingForm(forms.Form):
@@ -16,11 +16,10 @@ class BookingForm(forms.Form):
 
         if not checkin or not checkout:
             return cleaned
-        '''if is_naive(checkin):
-            checkin = make_aware(checkin)
-        if is_naive(checkout):
-            checkout = make_aware(checkout)'''
         if checkin and checkout:
+            resta = checkout - checkin
+            if resta < timedelta(days=2):
+                raise(ValidationError("Cada reserva debe ser de 2 noches o más"))
             if checkout <= checkin:
                 raise(ValidationError("La fecha de salida debe ser posterior a la de llegada"))
             elif checkin < date.today():

@@ -21,3 +21,6 @@ class HomeView(FormView):
 
 class AboutUsView(TemplateView):
     template_name = "core/about_us.html"
+
+class Terms_Cons(TemplateView):
+    template_name = "core/terminos_y_condiciones.html"

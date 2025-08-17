@@ -46,51 +46,50 @@ def charge_balance_offsession_or_send_checkout(booking, request):
         return {"status": "already_paid", "payment": payment}
 
     if not booking.balance_due or booking.balance_due <= 0:
-        return "No hay saldo a cobrar"
+        return  {"status": "no balance", "payment": payment}
     
-
-    try:
-        intent = stripe.PaymentIntent.create(
-            amount=_to_cents(booking.balance_due),
-            currency="mxn",
-            customer=booking.stripe_customer_id,
-            payment_method=booking.stripe_payment_method_id,
-            off_session=True,
-            confirm=True,
-            metadata={
-                "booking_id": str(booking.id),
-                "payment_id": str(payment.id),
-                "type":"balance"
-            },
-            description=f"Pago post checkin {booking.property.name}",
-        )
-        payment.stripe_payment_intent_id = intent.id 
-        #Si se puede realizar el pago:
-        if intent.status == "succeeded":
-            payment.status = "paid"
+    if payment.status != "requires_action":
+        try:
+            intent = stripe.PaymentIntent.create(
+                amount=_to_cents(booking.balance_due),
+                currency="mxn",
+                customer=booking.stripe_customer_id,
+                payment_method=booking.stripe_payment_method_id,
+                off_session=True,
+                confirm=True,
+                metadata={
+                    "booking_id": str(booking.id),
+                    "payment_id": str(payment.id),
+                    "type":"balance"
+                },
+                description=f"Pago post checkin {booking.property.name}",
+            )
+            payment.stripe_payment_intent_id = intent.id 
+            #Si se puede realizar el pago:
+            if intent.status == "succeeded":
+                payment.status = "paid"
+                payment.save(update_fields=["stripe_payment_intent_id", "status"])
+                return {"status": "paid", "payment": payment, "intent_id": intent.id}
+            
+            
+            #Si no se puede:
+            payment.status = "pending"
             payment.save(update_fields=["stripe_payment_intent_id", "status"])
-            return {"status": "paid", "payment": payment, "intent_id": intent.id}
-        
-        
-        #Si no se puede:
-        payment.status = "pending"
-        payment.save(update_fields=["stripe_payment_intent_id", "status"])
-        
+            
 
-    except stripe.error.CardError:
-        # fallo duro (tarjeta rechazada, etc.)
-        payment.status = "failed"
-        payment.save(update_fields=["status"])
+        except stripe.error.CardError:
+            # fallo duro (tarjeta rechazada, etc.)
+            payment.status = "failed"
+            payment.save(update_fields=["status"])
+            return {"status": "failed", "payment": payment}
 
     #Si no ha entrado en el if de arriba, significa que no se ha podido realizar el pago,
     #  creamos sesión y le mandamos link paga que pague manualmente
-
     success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
     cancel_url  = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
 
     session = stripe.checkout.Session.create(
         mode="payment",
-        customer=booking.stripe_customer_id or None,
         customer_email=booking.user.email or None,
         success_url=success_url,
         cancel_url=cancel_url,
@@ -110,18 +109,19 @@ def charge_balance_offsession_or_send_checkout(booking, request):
     #payment.stripe_payment_intent_id = session.payment_intent
     payment.status = "requires_action"
     payment.stripe_checkout_session_id = session.id
-    payment.save(update_fields=["stripe_payment_intent_id", "stripe_checkout_session_id", "status"])
+    payment.save(update_fields=["stripe_checkout_session_id", "status"])
 
     
     #Enviamos email
     context = {
             "user": booking.user,
             "booking": booking,
-            "payment_url": session.url
+            "payment_url": session.url #nombre en el template
     }
 
     subject = f"Completa el pago fallido de la reserva {booking.property.name}"
     html_body = render_to_string("emails/retry_balance_payment.html", context)
+    
     send_mail(
         subject=subject,
         message="Para completar tu pago haz click en el enlace (HTML only).",
@@ -130,5 +130,4 @@ def charge_balance_offsession_or_send_checkout(booking, request):
         html_message=html_body,
         fail_silently=False,
     )
-
-    return {"status": "requires_action", "payment": payment, "intent_id": intent.id, "checkout_url": session.url}
+    return {"status": "requires_action", "payment": payment, "checkout_url": session.url}

@@ -18,14 +18,24 @@
             {% else %}
                 <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
                     {% csrf_token %}
-                    <button type="submit">Cerran sesión</button>
+                    <button type="submit">Cerrar sesión</button>
                 </form>
+            {% endif %}
+            {% if request.user.is_staff %}
+                <a href="{% url 'admin:index' %}">Panel de Control</a>
             {% endif %}
         </nav>
     </div>
     {% block content %}{% endblock %}
 </body>
 <footer>
+    <div>
+        <p>Contacto</p>
+        <p>+52 3314494215</p>
+        <p>+34 672921265</p>
+        <a href="mailto:Reyesestancias@gmail.com">Reyesestancias@gmail.com</a>
+    </div>
 
+    <a href="{% url 'terminos_y_condiciones' %}" class="t&c">Terminos y condiciones</a>
 </footer>
 </html>

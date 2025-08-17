@@ -239,14 +239,27 @@ def stripe_webhook(request):
 
         
         payment.stripe_payment_intent_id = pi_id
-        payment.save(update_fields=["stripe_payment_intent_id"])
+        payment.status = "paid"
+        payment.save(update_fields=["stripe_payment_intent_id", "status"])
 
     elif etype == "payment_intent.payment_failed":
         pi = obj
         pi_id = pi.get("id")
+        customer_id = pi.get("customer")
+        booking_id = pi.get("metadata", {}).get("booking_id")
+        payment_id = pi.get("metadata", {}).get("payment_id")
+
+        try:
+            booking = Booking.objects.get(pk=booking_id)
+            payment = Payment.objects.get(pk=payment_id, booking=booking)
+        except (Booking.DoesNotExist, Payment.DoesNotExist):
+            return HttpResponse(status=200)
+        
+        payment.stripe_payment_intent_id = pi_id
+        payment.save(update_fields=["stripe_payment_intent_id"])
         payment = Payment.objects.filter(stripe_payment_intent_id=pi_id).select_related("booking").first()
         if payment:
-            payment.status = "failed"
+            payment.status = "requires_action"
             payment.save(update_fields=["status"])
 
     return HttpResponse(status=200)
@@ -276,15 +289,18 @@ class StartBalanceCheckoutView(LoginRequiredMixin, View):
             messages.success(request, "Saldo cobrado correctamente.")
             return redirect("bookings_list")
 
-        if status == "requires_action":
+        elif status == "requires_action":
             return redirect(result["checkout_url"])
 
-        if status == "already_paid":
+        elif status == "already_paid":
             messages.info(request, "El saldo ya estaba pagado.")
             return redirect("bookings_list")
-
-        messages.error(request, "No se pudo cobrar el saldo.")
-        return redirect("bookings_list")
+        elif status == "no balance":
+            messages.error(request, "No hay saldo por cobrar.")
+            return (redirect("booking_list"))
+        else:
+            messages.error(request, "No se pudo cobrar el saldo.")
+            return redirect("bookings_list")
 
 class RetryDepositPaymentView(LoginRequiredMixin, View):
     '''Reintento de depósito en caso de fallo'''
@@ -314,7 +330,7 @@ class RetryDepositPaymentView(LoginRequiredMixin, View):
         payment = (booking.payments.filter(payment_type="deposit").order_by("-created_at").first())
 
         if not payment or payment.status not in ("failed", "requires_action, pending"):
-            payment = payment.objects.create(
+            payment = Payment.objects.create(
                 booking=booking,
                 payment_type = "deposit",
                 amount=deposit,
@@ -372,8 +388,7 @@ class RetryDepositPaymentView(LoginRequiredMixin, View):
         payment.status= "pending"
         payment.save(update_fields=["stripe_checkout_session_id", "stripe_payment_intent_id", "status"])
        
-        return redirect("session.url")
-
+        return redirect(session.url)
 
 
 
@@ -389,9 +404,9 @@ class RetryBalancePaymentView(LoginRequiredMixin, View):
             return redirect("home")
         if not booking.balance_due or booking.balance_due <= 0 or booking.payments.filter(payment_type="balance", status="paid").exists():
             messages.error(request, "No hay saldo por cobrar")
-            return redirect(reverse("booking_datail", kwargs={"pk": booking.id}))
+            return redirect(reverse("bookings_list", kwargs={"pk": booking.id}))
 
-        base_url = request.build_absolute_uri("/").rstrip("/")
+        '''base_url = request.build_absolute_uri("/").rstrip("/")
         success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
         cancel_url = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
 
@@ -416,12 +431,31 @@ class RetryBalancePaymentView(LoginRequiredMixin, View):
                 "booking_id": booking.id,
                 "type": "balance",
             },
-        )
+        )'''
+        result = charge_balance_offsession_or_send_checkout(booking, request)
+        status = result["status"]
+
+        if status == "paid":
+            messages.success(request, "Saldo cobrado correctamente.")
+            return redirect("bookings_list")
+
+        elif status == "requires_action":
+            return redirect(result["checkout_url"])
+
+        elif status == "already_paid":
+            messages.info(request, "El saldo ya estaba pagado.")
+            return redirect("bookings_list")
+        elif status == "no balance":
+            messages.error(request, "No se puedo cobrar el saldo.")
+            return redirect("bookings_list")
+        else:
+            messages.error(request, "No se pudo cobrar el saldo.")
+            return redirect("bookings_list")
 
 
 
 def expire_unpaid_bookings():
-    qs = Booking.objects.filter(status="pending", hold_expires_at__isnull=False, hold_expires_at_lt=now())
+    qs = Booking.objects.filter(status="pending", hold_expires_at__isnull=False, hold_expires_at__lt=now())
     updated = qs.update(status="expired")
     return updated
 
