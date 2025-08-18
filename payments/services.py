@@ -48,49 +48,78 @@ def charge_balance_offsession_or_send_checkout(booking, request):
     if not booking.balance_due or booking.balance_due <= 0:
         return  {"status": "no balance", "payment": payment}
     
-    if payment.status != "requires_action":
-        try:
-            intent = stripe.PaymentIntent.create(
-                amount=_to_cents(booking.balance_due),
-                currency="mxn",
-                customer=booking.stripe_customer_id,
-                payment_method=booking.stripe_payment_method_id,
-                off_session=True,
-                confirm=True,
-                metadata={
-                    "booking_id": str(booking.id),
-                    "payment_id": str(payment.id),
-                    "type":"balance"
-                },
-                description=f"Pago post checkin {booking.property.name}",
-            )
-            payment.stripe_payment_intent_id = intent.id 
-            #Si se puede realizar el pago:
-            if intent.status == "succeeded":
-                payment.status = "paid"
-                payment.save(update_fields=["stripe_payment_intent_id", "status"])
-                return {"status": "paid", "payment": payment, "intent_id": intent.id}
-            
-            
-            #Si no se puede:
-            payment.status = "pending"
-            payment.save(update_fields=["stripe_payment_intent_id", "status"])
-            
+    if not (booking.stripe_customer_id and booking.stripe_payment_method_id):
+        return {"status": "missing_method", "payment": payment}
 
-        except stripe.error.CardError:
-            # fallo duro (tarjeta rechazada, etc.)
-            payment.status = "failed"
-            payment.save(update_fields=["status"])
-            return {"status": "failed", "payment": payment}
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=_to_cents(booking.balance_due),
+            currency="mxn",
+            customer=booking.stripe_customer_id,
+            payment_method=booking.stripe_payment_method_id,
+            off_session=True,
+            confirm=True,
+            metadata={
+                "booking_id": str(booking.id),
+                "payment_id": str(payment.id),
+                "type":"balance"
+            },
+            description=f"Pago post checkin {booking.property.name}",
+            # idempotency_key recomendable si llamarás esto desde cron: f"balance-{payment.id}"
+        )
+        
+
+        payment.stripe_payment_intent_id = intent.id 
+
+
+        #Si se puede realizar el pago:
+        if intent.status == "succeeded":
+            payment.status = "paid"
+            payment.save(update_fields=["stripe_payment_intent_id", "status"])
+            return {"status": "paid", "payment": payment, "intent_id": intent.id}
+        
+        
+        #Si no se puede:
+        # Con confirm=True, si no es succeeded casi siempre Stripe lanza excepción.
+        # Aun así, si llegas aquí, trata como requiere acción:
+        payment.status = "requires_action"
+        payment.save(update_fields=["stripe_payment_intent_id", "status"])
+
+    except stripe.error.CardError as e:
+        # ⇒ aquí caes cuando necesita 3DS o la tarjeta fue rechazada, porque stripe, en vez de devolver
+        # status "requires_action", lanza excepción de CardError.
+        #Obtenemos el objeto del error que lanza
+        err = getattr(e, "error", None)
+        #Dentro del error, suele venir el Payment intent incompleto
+        pi = getattr(err, "payment_intent", None)
+
+        # Normalizamos el ID del PaymentIntent (a veces viene dict, a veces objeto)
+        pi_id = (pi.get("id") if isinstance(pi, dict) else getattr(pi, "id", None))
+
+        # Si hay ID, lo guardamos en nuestro modelo
+        if pi_id:
+            payment.stripe_payment_intent_id = pi_id
+
+        # En vez de poner "failed", lo marcamos como "requires_action"
+        payment.status = "requires_action"
+        payment.save(update_fields=["stripe_payment_intent_id", "status"] if pi_id else ["status"])
+
+        #En caso de que sea algún error real de stripe: Servidor, validación etc...
+    except Exception as e:
+        payment.status = "failed"
+        payment.save(update_fields=["status"])
+        return {"status": "failed", "payment": payment, "error": str(e)}
+        
 
     #Si no ha entrado en el if de arriba, significa que no se ha podido realizar el pago,
-    #  creamos sesión y le mandamos link paga que pague manualmente
+    #y si no ha entrado en el exept de justo encima, significa que ha dado Card.error
+    #Continuamos con el flujo creamos sesión y le mandamos link paga que pague manualmente
     success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
     cancel_url  = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
 
     session = stripe.checkout.Session.create(
         mode="payment",
-        customer_email=booking.user.email or None,
+        customer=booking.stripe_customer_id,
         success_url=success_url,
         cancel_url=cancel_url,
         line_items=[{
@@ -106,7 +135,6 @@ def charge_balance_offsession_or_send_checkout(booking, request):
         }],
         metadata={"booking_id": str(booking.id), "payment_id": str(payment.id), "type": "balance"},
     )
-    #payment.stripe_payment_intent_id = session.payment_intent
     payment.status = "requires_action"
     payment.stripe_checkout_session_id = session.id
     payment.save(update_fields=["stripe_checkout_session_id", "status"])

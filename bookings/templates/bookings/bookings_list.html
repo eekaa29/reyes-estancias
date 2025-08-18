@@ -26,13 +26,13 @@
             {% else %}
                 <a href="{% url 'payment_start' booking.id %}" >Pagar Ahora</a>
             {% endif %}
-            {% if booking.balance_payment.status == "paid" %}
+            {% if booking.balance_payment and booking.balance_payment.status == "paid" %}
                 <p>Balance pagado correctamente</p>
-            {% elif booking.balance_payment.status == "requires_action" %}
+            {% elif booking.deposit_paid and not booking.balance_payment %}
+                <a href="{% url 'start_balance' booking.id %}">Pagar balance</a>
+            {% elif booking.balance_payment and booking.balance_payment.status == "requires_action" %}
                 <p>Ocurrió un error con el pago del balance, requiere acción</p>
                 <a href="{% url 'retry_balance' booking.id %}" >Reintentar pago</a>
-            {% else %}
-                <a href="{% url 'start_balance' booking.id %}">Pagar balance</a>
             {% endif %}
         {% empty %}
             <h1>No hay ninguna reserva en este momento</h1>

@@ -1,3 +1,5 @@
+
+{% load static tailwind_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,11 +7,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %} Reyes Estancias {% endblock %} </title>
     {% load static %}
+    {% tailwind_css %}
 </head>
 <body>
     <div>
-        <nav class="">
-            <img src="{% static 'core/img/logo.png' %}" alt="logo">
+        <nav class="flex justify-center items-center gap-3 text-blue-500">
+            <img src="{% static 'core/img/logo.png' %}" alt="logo" class="w-24 h-25">
             <a href="{% url 'property_list' %}">Propiedades</a>
             <a href="{% url 'about_us' %}">Sobre Nosotros</a>
             <a href="{% url 'bookings_list' %}">Mis Reservas</a>
