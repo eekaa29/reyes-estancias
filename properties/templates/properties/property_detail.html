@@ -6,8 +6,21 @@
         {{property.address}}
         {{property.max_people}}
         {% if checkin and checkout and cant_personas %}
-            <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
-            <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+            {% if active_booking and deposit_payment %}
+                {% if deposit_payment.status == "requires_action" or deposit_payment.status == "failed" %}
+                    <p>Hubo un problema con el pago del depósito</p>
+                    <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+                {% elif deposit_payment.status == "paid" %}
+                    <p>Pago del depósito exitoso</p>
+                    <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+                {% endif %}
+            {% else %}
+                <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
+                <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+            {% endif %}
+        {% elif active_booking and deposit_payment %}
+            <p>Hay una reserva en curso.</p>
+            <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
         {% else %}
             <h3>Selecciona fechas para comprobar disponibilidad</h3>
             <form method="post">

@@ -77,3 +77,21 @@ class CreateBookingView(LoginRequiredMixin, View):
 
         messages.success(request, "Reserva creada. Vamos a procesar el pago.")
         return redirect("payment_start", booking_id=booking.id)
+    
+class CancelBookingView(LoginRequiredMixin, View):
+    login_url = "login"
+
+    def post(self, request, booking_id):
+        booking = get_object_or_404(Booking, pk=booking_id)
+
+        if self.request.user != booking.user and not self.request.user.is_staff :
+            messages.error(request, "Usuario no autorizado")
+            return redirect("home")
+        
+        if booking.status == "cancelled":
+            messages.info(request, "La reserva ya estaba cancelada")
+            return redirect("bookings_list")
+
+        booking.status = "cancelled"
+        booking.save(update_fields=["status"])
+        return redirect("bookings_list")

@@ -2,9 +2,10 @@ from django.shortcuts import render
 from django.views.generic.list import ListView
 from django.views.generic.detail import DetailView
 from django.shortcuts import redirect
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from .models import Property
 from .forms import BookingForm
+from bookings.models import Booking
 # Create your views here.
 
 class PropertiesList(ListView):
@@ -35,6 +36,7 @@ class PropertyDetail(DetailView):
     model = Property
     template_name = "properties/property_detail.html"
     context_object_name = "property"
+    success_url = reverse_lazy("bookings_list")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -47,6 +49,29 @@ class PropertyDetail(DetailView):
         context["checkin"] = checkin
         context["checkout"] = checkout
         context["cant_personas"] = cant_personas
+
+        #Localizar la reserva y su pago de depósito por si falla
+
+        context["active_booking"] = None
+        context["deposit_payment"] = None
+
+        if self.request.user.is_authenticated:
+            booking_id = self.request.GET.get("booking_id")
+
+            base_qs = Booking.objects.filter(user=self.request.user, 
+            property=self.object).order_by("-id").prefetch_related("payments")
+
+            if booking_id:
+                booking = base_qs.filter(pk=booking_id).first()
+            else:
+                booking = base_qs.filter(status__in=["pending", "confirmed"]).first()
+            
+            if booking:
+                context["active_booking"] = booking
+                deposit = (booking.payments.filter(payment_type="deposit").order_by("-id").first())
+                context["deposit_payment"] = deposit
+                return context
+            
 
         #Caso 1- Viene del botón "Reservar ahora"
         if checkin and checkout and cant_personas:

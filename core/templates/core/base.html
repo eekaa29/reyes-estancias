@@ -12,7 +12,7 @@
 <body>
     <div>
         <nav class="flex justify-center items-center gap-3 text-blue-500">
-            <img src="{% static 'core/img/logo.png' %}" alt="logo" class="w-24 h-25">
+            <a href="{% url 'home' %}"><img src="{% static 'core/img/logo.png' %}" alt="logo" class="w-24 h-25"></a>
             <a href="{% url 'property_list' %}">Propiedades</a>
             <a href="{% url 'about_us' %}">Sobre Nosotros</a>
             <a href="{% url 'bookings_list' %}">Mis Reservas</a>

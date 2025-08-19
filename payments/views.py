@@ -166,7 +166,7 @@ class CheckoutCancelView(LoginRequiredMixin, View):
     template_name="payments/cancel.html"
     def get(self, request):
         booking_id = request.GET.get("booking_id")
-        payment = Payment.objects.filter(booking_id=booking_id).order_by("-created").first()
+        payment = Payment.objects.filter(booking_id=booking_id).order_by("-created_at").first()
         if payment and payment.status == "pending":
             payment.status == "failed"
             payment.save(update_fields=["status"])
@@ -180,7 +180,7 @@ class CheckoutCancelView(LoginRequiredMixin, View):
         except Booking.DoesNotExist:
             messages.info(request, "Operación cancelada")
 
-        return redirect("home")
+        return redirect("bookings_list")
 
 @csrf_exempt
 def stripe_webhook(request):

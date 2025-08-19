@@ -17,8 +17,8 @@ class BookingForm(forms.Form):
         if not checkin or not checkout:
             return cleaned
         if checkin and checkout:
-            resta = checkout - checkin
-            if resta < timedelta(days=2):
+            resta = (checkout - checkin).days
+            if resta < 2:
                 raise(ValidationError("Cada reserva debe ser de 2 noches o más"))
             if checkout <= checkin:
                 raise(ValidationError("La fecha de salida debe ser posterior a la de llegada"))

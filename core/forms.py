@@ -19,8 +19,8 @@ class HomeSearchForm(forms.Form):
         if checkin and checkout:
             cleaned["checkin"] = make_aware(datetime.combine(checkin, time(15, 0)))
             cleaned["checkout"] = make_aware(datetime.combine(checkout, time(12, 0)))
-            resta = checkout - checkin
-            if resta < timedelta(days=2):
+            resta = (checkout - checkin).days
+            if resta < 2:
                 raise(ValidationError("Cada reserva debe ser de 2 noches o más"))
             if checkout <= checkin:
                 raise(ValidationError("La fecha de salida debe ser posterior a la de llegada"))
