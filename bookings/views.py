@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.views.generic.list import ListView
+from django.views.generic import TemplateView
 from django.views import View
 from .models import Booking
 from properties.models import Property
@@ -12,6 +13,7 @@ from datetime import datetime
 from django.urls import reverse
 from decimal import Decimal, ROUND_HALF_UP
 from core.tzutils import compose_aware_dt
+from payments.services import *
 #from core.tzutils import compose_aware_dt 
 # Create your views here.
 
@@ -82,7 +84,8 @@ class CancelBookingView(LoginRequiredMixin, View):
     login_url = "login"
 
     def post(self, request, booking_id):
-        booking = get_object_or_404(Booking, pk=booking_id)
+        with transaction.atomic():
+            booking = (Booking.objects.select_for_update().get(pk=booking_id))
 
         if self.request.user != booking.user and not self.request.user.is_staff :
             messages.error(request, "Usuario no autorizado")
@@ -91,7 +94,32 @@ class CancelBookingView(LoginRequiredMixin, View):
         if booking.status == "cancelled":
             messages.info(request, "La reserva ya estaba cancelada")
             return redirect("bookings_list")
+        
+        plan = compute_refund_plan(booking)
 
         booking.status = "cancelled"
         booking.save(update_fields=["status"])
+
+        penalty = plan["penalty"]
+        if penalty and penalty > 0:
+            #llamo al servicio
+            desc = "Penalización cancelación" if plan["penalty_type"] == "cancellation_fee" else "No show"
+            charge_offsession_with_fallback(
+                booking=booking,
+                request=request,
+                amount=penalty,
+                payment_type=plan["penalty_type"],
+                description=f"{desc} · {booking.property.name}",
+            )
+
+        def do_refunds():
+            if plan["refunds"]:
+                for item in plan["refunds"]:
+                    refund_payment(item["payment"], item["amount"])
+
+        transaction.on_commit(do_refunds)
+
         return redirect("bookings_list")
+    
+class CancelBookingSureView(LoginRequiredMixin, TemplateView):
+    template_name="bookings/cancel_booking_sure.html"

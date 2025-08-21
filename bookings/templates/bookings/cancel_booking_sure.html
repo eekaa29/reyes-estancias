@@ -1,0 +1,13 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Mis Reservas{% endblock %}
+{% block content %}
+    <h1>Estás a punto de cancelar tu reserva.</h1>
+    <h3>Habrá penalización en caso de cancelar con menos de una semana de antelación.</h3>
+    <a href="{% url 'terminos_y_condiciones' %}">Lea nuestras políticas de cancelacion</a>
+    <form action="{% url 'cancel_booking' booking_id %}" method="post">
+        {% csrf_token %}
+        <button type="submit">Cancelar</button>
+    </form>
+    <a href="{% url 'bookings_list' %}">Volver</a>
+{% endblock %}

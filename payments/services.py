@@ -5,15 +5,22 @@ from django.template.loader import render_to_string
 from django.core.mail import send_mail
 from django.urls import reverse
 from django.db import transaction
-
+from django.utils.timezone import now
+from datetime import datetime, time, date, timedelta
+from django.shortcuts import get_object_or_404, redirect
 from .models import Payment
+from django.db.models import Sum
+
+DEPOSIT_RATE = Decimal("0.30")
+HALF_RATE    = Decimal("0.50")
+FULL_RATE    = Decimal("1.00")
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 def _to_cents(mx: Decimal) -> int:
     return int((mx * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-def ensure_balance_payment(booking):
+def ensure_balance_payment(booking, payment_type, amount):
     with transaction.atomic():
         p = (booking.payments
              .select_for_update()
@@ -21,29 +28,34 @@ def ensure_balance_payment(booking):
              .order_by("-id")
              .first())
         if p:
-            if p.amount != booking.balance_due:
-                p.amount = booking.balance_due
+            if p.amount != amount:
+                p.amount = amount
                 p.save(update_fields=["amount"])
             return p
 
         return Payment.objects.create(
             booking=booking,
-            payment_type="balance",
+            payment_type=payment_type,
             status="pending",
-            amount=booking.balance_due,
+            amount=amount,
             currency="MXN",
         )
 
-def charge_balance_offsession_or_send_checkout(booking, request):
+def charge_offsession_with_fallback(booking, request, amount, payment_type, description):
     """
     Intenta cobrar el saldo (70%) off-session. Si falla, crea Checkout Session y envía email con el link.
-    Retorna un string corto con el resultado: "succeeded" | "requires_action" | "failed".
+    Retorna un string corto con el resultado: "paid" | "requires_action" | "failed".
     """
-
-    payment = ensure_balance_payment(booking)
+    payment = ensure_balance_payment(booking, payment_type=payment_type, amount=amount)
 
     if payment.status == "paid":
         return {"status": "already_paid", "payment": payment}
+
+    if amount <= 0:
+        return {"status": "skipped", "msg": "Importe cero"}
+    
+    if not (booking.stripe_payment_method_id and booking.stripe_customer_id):
+        return {"status" : "missin_method"}
 
     if not booking.balance_due or booking.balance_due <= 0:
         return  {"status": "no balance", "payment": payment}
@@ -53,7 +65,7 @@ def charge_balance_offsession_or_send_checkout(booking, request):
 
     try:
         intent = stripe.PaymentIntent.create(
-            amount=_to_cents(booking.balance_due),
+            amount=_to_cents(amount),
             currency="mxn",
             customer=booking.stripe_customer_id,
             payment_method=booking.stripe_payment_method_id,
@@ -62,9 +74,9 @@ def charge_balance_offsession_or_send_checkout(booking, request):
             metadata={
                 "booking_id": str(booking.id),
                 "payment_id": str(payment.id),
-                "type":"balance"
+                "type":payment_type
             },
-            description=f"Pago post checkin {booking.property.name}",
+            description=description,
             # idempotency_key recomendable si llamarás esto desde cron: f"balance-{payment.id}"
         )
         
@@ -126,14 +138,14 @@ def charge_balance_offsession_or_send_checkout(booking, request):
             "quantity": 1,
             "price_data": {
                 "currency": "mxn",
-                "unit_amount": _to_cents(booking.balance_due),
+                "unit_amount": _to_cents(amount),
                 "product_data": {
-                    "name": f"Segundo pago · {booking.property.name}",
+                    "name": description,
                     "description": f"Booking #{booking.id} — {booking.arrival.date()} → {booking.departure.date()}",
                 },
             },
         }],
-        metadata={"booking_id": str(booking.id), "payment_id": str(payment.id), "type": "balance"},
+        metadata={"booking_id": str(booking.id), "payment_id": str(payment.id), "type": payment_type},
     )
     payment.status = "requires_action"
     payment.stripe_checkout_session_id = session.id
@@ -147,7 +159,7 @@ def charge_balance_offsession_or_send_checkout(booking, request):
             "payment_url": session.url #nombre en el template
     }
 
-    subject = f"Completa el pago fallido de la reserva {booking.property.name}"
+    subject = f"Completa tu pago {description}"
     html_body = render_to_string("emails/retry_balance_payment.html", context)
     
     send_mail(
@@ -159,3 +171,99 @@ def charge_balance_offsession_or_send_checkout(booking, request):
         fail_silently=False,
     )
     return {"status": "requires_action", "payment": payment, "checkout_url": session.url}
+
+
+#####################################################################################################################
+#                                             REEMBOLSOS                                                            #
+#####################################################################################################################
+
+def compute_refund_plan(booking):
+    """
+    Devuelve una lista de {'payment': Payment, 'amount': Decimal} en MXN,
+    sin efectos secundarios. Política:
+      - >7 días antes del check-in: reembolso total del depósito pagado.
+      - 0..7 días: no hay reembolso.
+      - no show / ya pasó el check-in: no hay reembolso.
+    """
+
+
+    today = now().date()
+    days_before = (booking.arrival.date() - today).days
+    
+    already_paid_total = booking.payments.filter(status="paid").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+    total = booking.total_amount
+
+    refund = []
+    penalty = Decimal("0.00")
+    penalty_type = None
+
+    if days_before < 0:
+        window = "noshow" 
+        target = total * FULL_RATE
+        penalty = max(target - already_paid_total, Decimal("0.00"))
+        penalty_type = "no_show" if penalty > 0 else None
+    
+    elif days_before <= 7:
+        window = "lte7"
+        target = total * HALF_RATE
+        penalty = max(target - already_paid_total, Decimal("0.00"))
+        penalty_type = "cancellation_fee" if penalty > 0 else None
+
+    else:
+        #Se devuelve todo el depósito.
+        window = "gt7"
+        payment = booking.payments.filter(payment_type="deposit", status="paid").last()
+        if payment:
+            refund_amount = payment.amount
+            already_refunded = (getattr(payment, "refunded_amount", Decimal(0.00)))
+            remaining = max(refund_amount - already_refunded, Decimal("0.00"))
+            
+            if remaining > 0:
+                refund.append({"payment": payment, "amount": remaining})
+
+
+    return {
+        "window" : window,
+        "days_before" : days_before,
+        "refunds" : refund,
+        "penalty" : penalty,
+        "penalty_type" : penalty_type
+    }
+
+def refund_payment(payment, amount, reason="requested_by_customer"):
+
+    if amount is None or amount <= 0:
+        return None
+
+    if not payment.stripe_payment_intent_id:
+        return None
+    
+    refunded = getattr(payment, "refunded_amount", Decimal("0.00"))
+    remaining = max(payment.amount - refunded, Decimal("0.00"))
+    if remaining <= 0:
+        None
+
+    if amount > remaining:
+        amount = remaining
+
+    if amount <= 0:
+        return None
+    try:
+        if payment.refund_status == "none":
+            payment.refund_status = "pending"
+            payment.refund_reason = reason
+            payment.save(update_fields=["refund_status", "refund_reason"])
+        
+        refund = stripe.Refund.create(
+            payment_intent=payment.stripe_payment_intent_id,
+            amount=_to_cents(amount),
+            reason=reason,
+            metadata={"payment_id": str(payment.id), "booking_id" : str(payment.booking.id)}
+        )
+        return refund
+    except stripe.error.InvalidError as e:
+        msg = getattr(e, "user_message", None) or str(e)
+        code = getattr(e, "code", None)
+        param = getattr(e, "param", None)
+        # Puedes devolver un dict o raise; para pruebas mejor devolver info
+        return {"error": "invalid_request", "message": msg, "code": code, "param": param}

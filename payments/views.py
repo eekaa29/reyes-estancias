@@ -1,7 +1,7 @@
 from django.shortcuts import render
 import stripe
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime
+from datetime import datetime, timezone
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -13,10 +13,15 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from properties.models import Property
 from bookings.models import Booking
-from .models import Payment
+from .models import Payment, RefundLog
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from .services import *
+from django.db import IntegrityError
+from django.db.models import F, Value
+from django.db.models.functions import Coalesce
+
+
 # Create your views here.
 
 assert settings.STRIPE_SECRET_KEY, "STRIPE_SECRET_KEY no está cargada (None/vacía)"
@@ -221,8 +226,8 @@ def stripe_webhook(request):
             return HttpResponse(status=200)
 
         # Actualiza estados y guarda credenciales para el 70%
-        if payment.status != "succeeded":
-            payment.status = "succeeded"
+        if payment.status != "paid":
+            payment.status = "paid"
             payment.save(update_fields=["status"])
 
         update = ["status"]
@@ -262,6 +267,55 @@ def stripe_webhook(request):
             payment.status = "requires_action"
             payment.save(update_fields=["status"])
 
+      
+    elif etype in ("refund.updated", "charge.refunded"):
+        refunds = []
+        if etype == "refund.updated" and obj.get("object") == "refund":
+            refunds = [obj]
+        elif etype == "charge.refunded" and obj.get("object") == "charge":
+            refunds = obj.get("refunds", {}).get("data", [])
+
+        
+        for refund in refunds:
+            payment_id = (refund.get("metadata") or {}).get("payment_id")
+
+            if not payment_id:
+                pi_id = refund.get("payment_intent") #En refund.updated suele venir
+
+                if pi_id:
+                    try:
+                        pi = stripe.PaymentIntent.retrieve(pi_id)
+                        payment_id = (pi.get("metadata") or {}).get("payment_id")
+                    except Exception:
+                        payment_id = None
+            if not payment_id:
+                continue
+            
+
+            #Cantidad de reembolso en MXN
+
+            amount_mxn = Decimal(refund.get("amount", 0)) / Decimal("100")
+            status = refund.get("status")
+
+            try:
+                RefundLog.objects.create(
+                    stripe_refund_id=refund["id"],
+                    payment_id=payment_id,
+                    amount=amount_mxn,
+                )
+            except IntegrityError: #Ya procesado este refund.id
+                continue
+
+            refund_status = "paid" if status == "succeeded" else "failed" if status == "failed" else "pending"
+            #Idempotencia básica:
+            Payment.objects.filter(pk=payment_id).update(
+            refunded_amount=Coalesce(F("refunded_amount"), Value(Decimal("0.00"))) + amount_mxn,
+            refund_count=Coalesce(F("refund_count"), Value(0)) + 1,
+            refund_status = refund_status,
+            stripe_refund_id=refund["id"],
+            last_refund_at=now(),
+        )
+            
     return HttpResponse(status=200)
 
 class RetryDepositPaymentView(LoginRequiredMixin, View):
@@ -272,7 +326,7 @@ class RetryDepositPaymentView(LoginRequiredMixin, View):
         booking = get_object_or_404(Booking, pk=booking_id, user=request.user)
         prop = booking.property
 
-        existing_paid = booking.payments.filter(payment_type="deposit", status__in=("succeeded", "paid")).exists()
+        existing_paid = booking.payments.filter(payment_type="deposit", status=("paid")).exists()
 
         if existing_paid:
             messages.info(request, "El deposito ya está pagado")
@@ -362,7 +416,7 @@ class StartBalanceCheckoutView(LoginRequiredMixin, View):
             messages.error(request, "Usuario no autorizado")
             return redirect("home")
         
-        result = charge_balance_offsession_or_send_checkout(booking, request)
+        result = charge_offsession_with_fallback(booking=booking, request=request, amount=booking.balance_due, payment_type="balance", description=f"Pago del balance · {booking.property.name}")
         #para pasar a produccion, quitar request. Y pasarle success y cancel url de manera completa
         if result["status"] == "paid":
             messages.info(request, "Balance pagado correctamente")
@@ -423,28 +477,6 @@ class RetryBalancePaymentView(LoginRequiredMixin, View):
         
         session = stripe.checkout.Session.retrieve(payment.stripe_checkout_session_id)
         return redirect(session.url)
-
-        '''result = charge_balance_offsession_or_send_checkout(booking, request)
-        #para pasar a produccion, quitar request. Y pasarle success y cancel url de manera completa
-        if result["status"] == "paid":
-            messages.info(request, "Balance pagado correctamente")
-            return redirect("bookings_list")
-        
-        if result["status"] == "requires_action":
-            messages.info(request, "Pago requiere acción, revisa tu correo")
-            return redirect("retry_balance", booking_id=booking.id)
-
-        if result["status"] == "already_paid":
-            messages.info(request, "No hay saldo pendiente por cobrar")
-            return redirect("bookings_list") 
-
-        if result["status"] == "missing_method":
-            messages.error(request, "No hay método de pago guardado para ejecutar el cargo.")
-            return redirect("bookings_list")
-
-        # fallo inesperado
-        messages.error(request, f"No se pudo iniciar el cobro: {result.get('error','Error desconocido')}")
-        return redirect("bookings_list")'''
 
 
 

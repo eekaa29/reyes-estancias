@@ -30,11 +30,10 @@ class Booking(models.Model):
     
     def deposit_payment(self):
         return self.payments.filter(payment_type="deposit").order_by("-id").first()
-    
-    
+
     def deposit_paid(self):
         p = self.deposit_payment()
-        return bool(p and p.status in ("succeeded","paid"))
+        return bool(p and p.status == "paid")
     
     
     def balance_payment(self):
@@ -42,7 +41,7 @@ class Booking(models.Model):
     
     def balance_paid(self):
         p = self.balance_payment()
-        return bool(p and p.status in ("succeeded", "paid"))
+        return bool(p and p.status == "paid")
 
 
     class Meta():
