@@ -2,8 +2,8 @@ from django.shortcuts import render
 from django.views.generic.list import ListView
 from django.views.generic import TemplateView
 from django.views import View
-from .models import Booking
-from properties.models import Property
+from .models import *
+from properties.models import *
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views import View
 from django.contrib import messages
@@ -123,3 +123,71 @@ class CancelBookingView(LoginRequiredMixin, View):
     
 class CancelBookingSureView(LoginRequiredMixin, TemplateView):
     template_name="bookings/cancel_booking_sure.html"
+
+class RemakeBookingView(LoginRequiredMixin, View):
+    login_url = "login"
+
+    def post(self, request, *args, **kwargs):
+        booking = get_object_or_404(Booking, pk=kwargs.get("pk"))
+        property = booking.property
+        
+        if booking.user != self.request.user and not self.request.user.is_staff:
+            messages.error = (request, "Usuario no autorizado para rehacer la reserva")
+            return redirect("home")
+
+        elif booking.status != "cancelled":
+            messages.error(request, "Solo se pueden rehacer reservas canceladas")
+            return redirect("bookings_list")
+
+        checkin = booking.arrival
+        checkout = booking.departure
+        cant_personas = booking.person_num
+
+        total_amount = booking.total_amount
+        deposit_amount = booking.deposit_amount
+        balance_due = booking.balance_due
+        status = "pending"
+        stripe_customer_id = booking.stripe_customer_id
+        stripe_payment_method_id = booking.stripe_payment_method_id
+
+        #Comprobar si existe una rebooking en curso
+        existing = (Booking.objects.filter(user=self.request.user, property=property, arrival=checkin,
+                                            departure=checkout, status="cancelled").exclude(hold_expires_at__lt=now()).first())
+        
+        if existing:
+            messages.error(request, "Ya existe un reintento de reserva para esta reserva cancelada")
+            return redirect("payment_start", booking_id=existing.id)
+        
+        if not property.is_available(checkin, checkout, cant_personas):
+            messages.error(request, "Las fechas ya no están disponibles")
+            return redirect("bookings_list")
+        try:
+            with transaction.atomic():
+                (property.bookings.select_for_update(skip_locked=True)
+                .filter(status=["confirmed","pending"]).exclude(hold_expires_at__lt=now())
+                .filter(arrival__lt=checkout, departure__gt=checkin).count())
+
+                if not property.is_available(checkin, checkout, cant_personas):
+                    messages.error(request, "Las fechas ya no están disponibles")
+                    return redirect("bookings_list")
+            
+
+                new_booking = Booking.objects.create(
+                    user=request.user,
+                    property=property,
+                    person_num=cant_personas,
+                    arrival=checkin,
+                    departure=checkout,
+                    total_amount=total_amount,
+                    deposit_amount=deposit_amount,
+                    balance_due=balance_due,
+                    status=status,
+                    hold_expires_at=now() + timedelta(minutes=30),
+                    stripe_customer_id=stripe_customer_id,
+                    stripe_payment_method_id=stripe_payment_method_id,
+                )
+        except Exception as e:
+            messages.error(request, f"No es posible rehacer la reserva: {e}")
+            return redirect("bookings_list")
+
+        return redirect("payment_start", booking_id=new_booking.id)

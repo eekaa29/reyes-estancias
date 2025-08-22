@@ -20,6 +20,10 @@
             {% comment %} Depósito {% endcomment %}
             {% if booking.status == "cancelled" %}
                 <h3>Reserva cancelada</h3>
+                <form action="{% url 'remake_booking' pk=booking.id %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit">Rehacer reserva</button>
+                </form>
                 <a href="{% url 'home' %}">Realizar otra</a>
             {% elif booking.status == "expired" %}
                 <h3>Su reserva expiró</h3>
