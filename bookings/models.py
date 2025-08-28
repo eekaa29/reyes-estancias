@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from properties.models import Property
 from decimal import Decimal
+from django.db.models import Sum
 
 # Create your models here.
 
@@ -42,6 +43,18 @@ class Booking(models.Model):
     def balance_paid(self):
         p = self.balance_payment()
         return bool(p and p.status == "paid")
+    
+    def dep_before_chage_dates(self):
+        return self.payments.filter(payment_type="deposit", status="paid").aggregate(s=Sum("amount")) ["s"] or Decimal("0.00")
+    
+    def net_deposit_paid(self):
+        paid_dep = self.payments.filter(payment_type="deposit", status="paid").aggregate(s=Sum("amount")) ["s"] or Decimal("0.00")
+        refunded = self.payments.filter(payment_type="deposit", status="paid").aggregate(s=Sum("refunded_amount")) ["s"] or Decimal("0.00")
+        return (paid_dep - refunded)
+    
+    def balance_due_runtime(self):
+        balance_due = self.total_amount - self.net_deposit_paid()
+        return balance_due if balance_due > 0 else Decimal("0.00")
 
 
     class Meta():
@@ -50,3 +63,28 @@ class Booking(models.Model):
 
     def __str__(self):
         return f"{self.property.name} - {self.user.username} - ({self.arrival} => {self.departure})"
+    
+
+class BookingChangeLog(models.Model):
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="change_logs", verbose_name="Reserva modificada")
+    actor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Usuario")
+    old_arrival = models.DateTimeField(verbose_name="Llegada antigua")
+    old_departure = models.DateTimeField(verbose_name="Salida antigua")
+    new_arrival = models.DateTimeField(verbose_name="Llegada nueva")
+    new_departure = models.DateTimeField(verbose_name="Salida nueva")
+    old_T = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Antiguo total")
+    new_T = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Nuevo total")
+    paid_dep = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Depósito pagado", default=Decimal("0.00"))
+    deposit_topup = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Depósito extra")
+    deposit_target = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Nuevo depósito")
+    deposit_refund = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Devolución")
+    old_balance = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Balance antiguo")
+    new_balance_due = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Nuevo balance")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Creado")
+
+    class Meta:
+        verbose_name="Registro de cambio de reservas"
+        verbose_name_plural="Registros de cambio de reservas"
+
+    def __str__(self):
+        return f"{self.booking.property.name} - {self.actor} - ({self.new_arrival} => {self.new_departure})"

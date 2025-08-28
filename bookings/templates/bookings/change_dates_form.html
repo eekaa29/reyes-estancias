@@ -1,0 +1,13 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Mis Reservas{% endblock %}
+{% block content %}
+    <h1>Modificar fechas:</h1>
+    <h3>Compruebe disponibilidad.</h3>
+    <form action="{% url 'booking_change_dates_preview' pk=booking.id %}" method="post">
+        {% csrf_token %}
+        {{form.as_p}}
+        <button type="submit">Aplicar cambio</button>
+    </form>
+    <a href="{% url 'bookings_list' %}">Volver</a>
+{% endblock %}

@@ -1,44 +1,71 @@
-
 {% load static tailwind_tags %}
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %} Reyes Estancias {% endblock %} </title>
-    {% load static %}
-    {% tailwind_css %}
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %} Reyes Estancias {% endblock %}</title>
+    {% load static %} {% tailwind_css %}
+  </head>
+  <body>
     <div>
-        <nav class="flex justify-center items-center gap-3 text-blue-500">
-            <a href="{% url 'home' %}"><img src="{% static 'core/img/logo.png' %}" alt="logo" class="w-24 h-25"></a>
-            <a href="{% url 'property_list' %}">Propiedades</a>
-            <a href="{% url 'about_us' %}">Sobre Nosotros</a>
-            <a href="{% url 'bookings_list' %}">Mis Reservas</a>
-            {% if not request.user.is_authenticated %}
-                <a href="{% url 'login' %}">Iniciar Sesión</a>
-            {% else %}
-                <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
-                    {% csrf_token %}
-                    <button type="submit">Cerrar sesión</button>
-                </form>
-            {% endif %}
-            {% if request.user.is_staff %}
-                <a href="{% url 'admin:index' %}">Panel de Control</a>
-            {% endif %}
-        </nav>
+      <nav class="flex justify-center items-center gap-3 text-blue-500">
+        <a href="{% url 'home' %}"
+          ><img
+            src="{% static 'core/img/logo.png' %}"
+            alt="logo"
+            class="w-24 h-25"
+        /></a>
+        <a href="{% url 'property_list' %}">Propiedades</a>
+        <a href="{% url 'about_us' %}">Sobre Nosotros</a>
+        <a href="{% url 'bookings_list' %}">Mis Reservas</a>
+        {% if not request.user.is_authenticated %}
+        <a href="{% url 'login' %}">Iniciar Sesión</a>
+        {% else %}
+        <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
+          {% csrf_token %}
+          <button type="submit">Cerrar sesión</button>
+        </form>
+        {% endif %} {% if request.user.is_staff %}
+        <a href="{% url 'admin:index' %}">Panel de Control</a>
+        {% endif %}
+      </nav>
     </div>
-    {% block content %}{% endblock %}
-</body>
-<footer>
+    {% if messages %}
+    <div class="fixed top-4 right-4 space-y-2 z-50">
+      {% for message in messages %}
+      <div
+        class="px-4 py-3 rounded-lg shadow text-sm transition {% if message.tags == 'success' %}bg-green-100 text-green-800 {% elif message.tags == 'error' %}bg-red-100 text-red-800 {% elif message.tags == 'warning' %}bg-yellow-100 text-yellow-800 {% else %}bg-blue-100 text-blue-800{% endif %}"
+        role="status"
+        data-toast
+      >
+        {{ message }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %} {% block content %}{% endblock %}
+    <script>
+      // Autocerrar a los 3.5s
+      setTimeout(() => {
+        document.querySelectorAll("[data-toast]").forEach((el) => {
+          el.style.transition = "opacity .3s, transform .3s";
+          el.style.opacity = "0";
+          el.style.transform = "translateY(6px)";
+          setTimeout(() => el.remove(), 300);
+        });
+      }, 3500);
+    </script>
+  </body>
+  <footer>
     <div>
-        <p>Contacto</p>
-        <p>+52 3314494215</p>
-        <p>+34 672921265</p>
-        <a href="mailto:Reyesestancias@gmail.com">Reyesestancias@gmail.com</a>
+      <p>Contacto</p>
+      <p>+52 3314494215</p>
+      <p>+34 672921265</p>
+      <a href="mailto:Reyesestancias@gmail.com">Reyesestancias@gmail.com</a>
     </div>
 
-    <a href="{% url 'terminos_y_condiciones' %}" class="t&c">Terminos y condiciones</a>
-</footer>
+    <a href="{% url 'terminos_y_condiciones' %}" class="t&c"
+      >Terminos y condiciones</a
+    >
+  </footer>
 </html>

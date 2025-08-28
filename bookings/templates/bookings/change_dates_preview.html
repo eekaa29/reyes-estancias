@@ -1,0 +1,24 @@
+{% extends "core/base.html" %} 
+{% load static %} 
+{% block title %}Mis Reservas{%endblock %} 
+
+{% block content %}
+<h3>Detalles de la nueva reserva</h3>
+<p>Nuevo checkin: {{checkin}}</p>
+<p>Nuevo checkout: {{checkout}}</p>
+<p>Nuevo depósito: {{quote.deposit_target}} MXN</p>
+{% if quote.dep_topup and quote.dep_topup > 0 %}
+<p>Extra a pagar: {{quote.dep_topup}} MXN</p>
+{% elif quote.dep_refund and quote.dep_refund > 0 %}
+<p>A reembolsar: {{quote.dep_refund}} MXN</p>
+{% endif %}
+<p>Nuevo balance: {{quote.balance_next}} MXN</p>
+<p>Precio total: {{quote.T_new}} MXN</p>
+<form action="{% url 'booking_change_dates_apply' pk=booking.id %}" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="checkin" value="{{ checkin|date:'Y-m-d' }}">
+    <input type="hidden" name="checkout" value="{{ checkout|date:'Y-m-d' }}">
+    <button type="submit">Confirmar</button>
+</form>
+<a href="{% url 'booking_change_dates_start' pk=booking.id %}">Editar fechas</a>
+{% endblock %}

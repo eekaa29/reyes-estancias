@@ -14,6 +14,11 @@ from django.urls import reverse
 from decimal import Decimal, ROUND_HALF_UP
 from core.tzutils import compose_aware_dt
 from payments.services import *
+from .forms import ChangeDatesForm
+from .services import *
+from django.http import HttpResponse, HttpResponseBadRequest
+from django.db.models import OuterRef, Subquery
+from .models import Booking, BookingChangeLog
 #from core.tzutils import compose_aware_dt 
 # Create your views here.
 
@@ -21,9 +26,16 @@ class BookingsList(LoginRequiredMixin, ListView):
     login_url = "login"
     model = Booking
     template_name = "bookings/bookings_list.html"
+    context_object_name="bookings"
 
     def get_queryset(self):
-        return Booking.objects.filter(user=self.request.user)
+        latest_log = (BookingChangeLog.objects
+                      .filter(booking=OuterRef("pk"))
+                      .order_by("-created_at"))
+        return (Booking.objects
+                .filter(user=self.request.user)  # o tu filtro
+                .annotate(last_deposit_refund=Subquery(latest_log.values("deposit_refund")[:1]))
+                .select_related("property"))
     
 class CreateBookingView(LoginRequiredMixin, View):
     login_url = "login"
@@ -77,7 +89,7 @@ class CreateBookingView(LoginRequiredMixin, View):
             if update_fields:
                 booking.save(update_fields=update_fields)
 
-        messages.success(request, "Reserva creada. Vamos a procesar el pago.")
+        messages.success(request, "Reserva creada.")
         return redirect("payment_start", booking_id=booking.id)
     
 class CancelBookingView(LoginRequiredMixin, View):
@@ -191,3 +203,94 @@ class RemakeBookingView(LoginRequiredMixin, View):
             return redirect("bookings_list")
 
         return redirect("payment_start", booking_id=new_booking.id)
+    
+                                                                #CAMBIAR FECHAS
+
+class BookingChangeDatesStartView(LoginRequiredMixin, View):
+    login_url="login"
+    
+    def get(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk)
+
+        if booking.user != self.request.user and not self.request.user.is_staff:
+            messages.error(request, "Usuario no autorizado")
+            return redirect("home")
+        
+        if booking.status != "confirmed":
+            messages.error(request, "Solo se pueden modificar las fechas de reservas confirmadas")
+            return redirect("bookings_list")
+
+        form = ChangeDatesForm(initial={
+            "checkin": booking.arrival,
+            "checkout": booking.departure,
+        })
+
+        return render(request, "bookings/change_dates_form.html", {"booking":booking, "form":form})
+class BookingChangeDatesPreviewView(LoginRequiredMixin, View):
+    login_url="login"
+
+    def post(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk)
+
+        if booking.user != self.request.user and not self.request.user.is_staff:
+            messages.error(request, "Usuario no autorizado")
+        
+        form = ChangeDatesForm(request.POST)
+
+        if not form.is_valid():
+            messages.error(request, "El formulario no es válido")
+            return render(request, "change_dates_form.html", {"booking":booking, "form":form})
+        
+        new_in = compose_aware_dt(form.cleaned_data["checkin"], 15, 0,)
+        new_out = compose_aware_dt(form.cleaned_data["checkout"], 12, 0)
+
+        q = quote_change_booking_dates(booking, new_in, new_out)
+
+        if not q["ok"]:
+            messages.error(request, "Propiedad no disponible en estas fechas")
+            return redirect("change_dates_form.html", {"booking":booking, "form":form})
+
+        ctx = {"booking": booking, "form":form, "quote":q, "checkin":form.cleaned_data["checkin"], "checkout": form.cleaned_data["checkout"]} 
+        return render(request, "bookings/change_dates_preview.html", ctx)
+
+class BookingChangeDatesApplyView(LoginRequiredMixin, View):
+    login_url="login"
+
+    def post(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk)
+
+        if booking.user != self.request.user and not self.request.user.is_staff:
+            messages.error(request, "Usuario no autorizado")
+            return redirect("bookings_list")
+        
+        
+        checkin = request.POST.get("checkin")
+        checkout = request.POST.get("checkout")
+
+        try:
+            new_in = compose_aware_dt(checkin, 15, 0)
+            new_out = compose_aware_dt(checkout, 12, 0)
+        except Exception as e:
+            messages.error(request,"Formulario inválido")
+            print(f"Error: {e}")
+            return redirect("booking_change_dates_start", pk=booking.id)
+
+
+        serv = apply_change_booking_dates(booking=booking, new_in=new_in, new_out=new_out, actor_user=self.request.user, request=request)
+
+        if not serv["ok"]:
+            messages.error(request, "No se puedo hacer el cambio de fechas, la disponibilidad cambió")
+            return redirect("booking_change_dates_start", pk=booking.id)
+
+        actions = serv.get("actions", {})
+
+        if "checkout_url" in actions:
+            messages.info(request, f"El cambio ha sido aplicado, se necesita un depósito adicional de {actions["dep_topup"]} MXN")
+            return redirect(actions["checkout_url"])
+        
+        if "dep_refund" in actions:
+            messages.success(request, f"Cambios aplicados. El reembolso ha sido creado: {actions["dep_refund"]} MXN")
+            return redirect("bookings_list")
+        
+        messages.success(request, f"Cambio realizado correctamente. Se ha generado un ajuste en el importe del balance.Todo listo")
+        return redirect("bookings_list")

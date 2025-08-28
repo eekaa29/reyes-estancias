@@ -10,6 +10,7 @@ from datetime import datetime, time, date, timedelta
 from django.shortcuts import get_object_or_404, redirect
 from .models import Payment
 from django.db.models import Sum
+from properties.models import Property
 
 DEPOSIT_RATE = Decimal("0.30")
 HALF_RATE    = Decimal("0.50")
@@ -267,3 +268,136 @@ def refund_payment(payment, amount, reason="requested_by_customer"):
         param = getattr(e, "param", None)
         # Puedes devolver un dict o raise; para pruebas mejor devolver info
         return {"error": "invalid_request", "message": msg, "code": code, "param": param}
+    
+def _round(x):
+    return x.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+def get_paid_deposit_amount(booking):
+    """
+    Suma de depósitos 'paid' (payment_type='deposit') menos lo ya reembolsado.
+    Soporta múltiples depósitos (p.ej., top-ups) usando el mismo tipo.
+    """
+    deposits = booking.payments.filter(payment_type="deposit", status="paid")
+    paid = deposits.aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+    refunded = Decimal("0.00")
+    for deposit in deposits.only("id", "amount", "refunded_amount"):
+        refunded += getattr(deposit, "refunded_amount", Decimal("0.00"))
+    return _round(Decimal(paid) - refunded)
+
+def create_deposit_topup_checkout(booking, request, amount, 
+    description="Depósito adicional para el cambio de fechas"):
+
+    """
+    Crea un Payment (payment_type='deposit') y una Checkout Session para cobrar SOLO el top-up.
+    No envía emails ni cambia el status a requires_action; dejamos 'pending' y el webhook marcará 'paid'.
+    """
+
+    if amount <= 0:
+        return {"status": "skipped", "msg": "Importe adicional no requerido"}
+    
+    with transaction.atomic():
+        payment = Payment.objects.create(
+            booking=booking,
+            payment_type="deposit",
+            amount=amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            currency="MXN",
+            status="pending",
+        )
+
+    success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
+    cancel_url = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
+
+    session = stripe.checkout.Session.create(
+        mode="payment",
+        customer=booking.stripe_customer_id or None,
+        success_url=success_url,
+        cancel_url=cancel_url,
+        payment_intent_data={
+            "setup_future_usage":"off_session",
+            "metadata":{"booking_id":str(booking.id), 
+                        "payment_id":str(payment.id),
+                        "type": "deposit"},
+
+        },
+        line_items=[{
+            "quantity":1,
+            "price_data":{
+                "currency":"mxn",
+                "unit_amount":_to_cents(amount),
+                "product_data":{
+                    "name":description,
+                    "description":f"Booking #{booking.id} — {booking.arrival.date()} → {booking.departure.date()}",
+                },              
+            },
+        }],
+        metadata={
+            "booking_id":str(booking.id),
+            "payment_id": str(payment.id),
+            "type": "deposit",
+        },
+    )
+
+    payment.stripe_checkout_session_id = session.id
+    payment.stripe_payment_intent_id = session.payment_intent
+    payment.save(update_fields=["stripe_checkout_session_id", "stripe_payment_intent_id"])
+
+    return {"status": "pending", "payment":payment, "checkout_url": session.url}
+
+def trigger_refund_for_deposit_diff(booking, amount, prefer_single = True):
+
+    """
+    Reembolsa `amount` (MXN) del depósito ya pagado.
+    - prefer_single=True: si cabe, hace UN SOLO refund contra el último pago de depósito.
+    Si no cabe, reparte contra pagos anteriores (Stripe requiere un refund por PaymentIntent).
+    Devuelve lista de resultados [{'payment_id', 'requested', 'result'}, ...].
+    Si amount cabe en el último pago (normal), se hace un único refund.
+
+    Si no cabe (ej.: top-up de $60 y debes devolver $70), se harán dos refunds: 
+    $60 al último + $10 al anterior. No es “raro”; es cómo Stripe lo exige
+    """
+
+    remaining = _round(amount or Decimal("0.00"))
+
+    result = []
+
+    if remaining <= 0:
+        return result
+    
+    deposits = (booking.payments.filter(payment_type="deposit", status="paid").order_by("-id"))
+
+    if prefer_single:
+        last = deposits.first()
+        if not last:
+            return result
+        avaliable = max(last.amount - getattr(last, "refunded_amount", Decimal("0.00")), Decimal("0.00"))
+        
+        if remaining <= avaliable:
+            refund = refund_payment(last, remaining, reason="requested_by_customer")
+            result.append({"payment_id": last.id, "requested": remaining, "result": refund})
+            return result
+    
+    #En caso de que no se pueda cubrir todo el reembolso con el último depósito cobrado:
+
+    for deposit in deposits:
+        if remaining <=0:
+            break
+        refunded = getattr(deposit, "refunded_amount", Decimal("0.00"))
+        available = max(deposit.amount - refunded), Decimal("0.00")
+        if available <= 0:
+            continue
+        to_refund = _round(min(available, remaining))
+        refund = refund_payment(deposit, to_refund, reason="requested_by_customer")
+        result.append({
+            "payment_id":deposit.id,
+            "requested":to_refund,
+            "result": refund,
+        })
+        remaining -= to_refund
+    return result
+
+def reschedule_balance_charge(booking, when):
+    """
+    Punto de enganche para tu cron/tarea que cobra el balance off-session.
+    Aquí solo devolvemos un dict; integra tu scheduler donde te convenga.
+    """
+    return {"scheduled_for": when}

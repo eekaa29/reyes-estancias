@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils.timezone import make_aware, now
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from core.tzutils import compose_aware_dt
 # Create your models here.
@@ -17,7 +17,7 @@ class Property (models.Model):
     latitude = models.FloatField(blank=True, null= True, verbose_name="Latitud")
     longitude = models.FloatField(blank=True, null= True, verbose_name="Altitud")
 
-    def is_available(self, checkin, checkout, cant_personas):
+    def is_available(self, checkin, checkout, cant_personas, *, exclude_booking_id=None, buffer_nights=0):
         qs = self.bookings.filter(status__in=["confirmed", "pending"])
         qs = qs.exclude(status="pending", hold_expires_at__lt=now())
         try:
@@ -31,9 +31,18 @@ class Property (models.Model):
         if self.max_people < int(cant_personas):
             return False
         
+        if exclude_booking_id:
+            qs = qs.exclude(id=exclude_booking_id)
+
+        if buffer_nights:
+            checkin -= timedelta(days=buffer_nights)
+            checkout += timedelta(days=buffer_nights)
+
+
         for booking in qs:
             if (booking.arrival < checkout) and (booking.departure > checkin):
                 return False
+        
         return True
     
     def _to_date(self, value):

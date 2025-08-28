@@ -43,10 +43,10 @@ class StartCheckoutView(LoginRequiredMixin, View):
             return redirect("bookings_list")
         
         if booking.hold_expires_at and booking.hold_expires_at <= now():
-            messages.info("La reserva ha expirado, vuelve a comprobar disponibilidad")
+            messages.info(request, "La reserva ha expirado, vuelve a comprobar disponibilidad")
             return redirect("property_detail", pk=booking.property_id)
         
-        if booking.status not in ("pending", "pending"):
+        if booking.status != "pending":
             messages.warning(request, "Esta reserva no está en un estado válido para pagar.")
             return redirect("bookings_list")
         
@@ -81,7 +81,7 @@ class StartCheckoutView(LoginRequiredMixin, View):
             booking.save(update_fields=fields_to_update)
 
         payment = (booking.payments
-                .filter(payment_type=["deposit"])
+                .filter(payment_type="deposit")
                 .order_by("-created_at")
                 .first())
         #Crear registro del pago (deposit)
@@ -173,7 +173,7 @@ class CheckoutCancelView(LoginRequiredMixin, View):
         booking_id = request.GET.get("booking_id")
         payment = Payment.objects.filter(booking_id=booking_id).order_by("-created_at").first()
         if payment and payment.status == "pending":
-            payment.status == "failed"
+            payment.status = "failed"
             payment.save(update_fields=["status"])
 
         try:
@@ -308,13 +308,17 @@ def stripe_webhook(request):
 
             refund_status = "paid" if status == "succeeded" else "failed" if status == "failed" else "pending"
             #Idempotencia básica:
-            Payment.objects.filter(pk=payment_id).update(
-            refunded_amount=Coalesce(F("refunded_amount"), Value(Decimal("0.00"))) + amount_mxn,
-            refund_count=Coalesce(F("refund_count"), Value(0)) + 1,
-            refund_status = refund_status,
-            stripe_refund_id=refund["id"],
-            last_refund_at=now(),
-        )
+            updates = {
+            "refund_count":Coalesce(F("refund_count"), Value(0)) + 1,
+            "refund_status" : refund_status,
+            "stripe_refund_id":refund["id"],
+            "last_refund_at":now(),
+            }
+            if refund_status == "paid":
+                updates["refunded_amount"] = Coalesce(F("refunded_amount"), Value(Decimal("0.00"))) + amount_mxn
+
+            Payment.objects.filter(pk=payment_id).update(**updates)
+            
             
     return HttpResponse(status=200)
 
@@ -326,11 +330,11 @@ class RetryDepositPaymentView(LoginRequiredMixin, View):
         booking = get_object_or_404(Booking, pk=booking_id, user=request.user)
         prop = booking.property
 
-        existing_paid = booking.payments.filter(payment_type="deposit", status=("paid")).exists()
+        pending_deposit = booking.payments.filter(payment_type="deposit", status="requires_action").exists()
 
-        if existing_paid:
+        if not pending_deposit:
             messages.info(request, "El deposito ya está pagado")
-            return redirect("booking_list")
+            return redirect("bookings_list")
         
 
         if self.request.user != booking.user and not self.request.user.is_staff:
@@ -345,7 +349,7 @@ class RetryDepositPaymentView(LoginRequiredMixin, View):
         deposit = (booking.deposit_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         payment = (booking.payments.filter(payment_type="deposit").order_by("-created_at").first())
 
-        if not payment or payment.status not in ("failed", "requires_action, pending"):
+        if not payment or payment.status not in ("failed", "requires_action", "pending"):
             payment = Payment.objects.create(
                 booking=booking,
                 payment_type = "deposit",
@@ -416,7 +420,8 @@ class StartBalanceCheckoutView(LoginRequiredMixin, View):
             messages.error(request, "Usuario no autorizado")
             return redirect("home")
         
-        result = charge_offsession_with_fallback(booking=booking, request=request, amount=booking.balance_due, payment_type="balance", description=f"Pago del balance · {booking.property.name}")
+        amount = booking.balance_due_runtime()
+        result = charge_offsession_with_fallback(booking=booking, request=request, amount=amount, payment_type="balance", description=f"Pago del balance · {booking.property.name}")
         #para pasar a produccion, quitar request. Y pasarle success y cancel url de manera completa
         if result["status"] == "paid":
             messages.info(request, "Balance pagado correctamente")

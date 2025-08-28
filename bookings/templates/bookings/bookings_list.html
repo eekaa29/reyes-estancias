@@ -1,57 +1,66 @@
-{% extends "core/base.html" %}
-{% load static %}
-{% block title %}Mis Reservas{% endblock %}
+{% extends "core/base.html" %} {% load static %} 
+{% block title %}Mis Reservas{%endblock %} 
+
 {% block content %}
 
-        <h1>Mis Reservas</h1>
-    
-        {% for booking in booking_list %}
-            <h2>Detalles de la reserva</h2>
-            <h3>Estado de la reserva: {{ booking.get_status_display }}</h3>
-            <p>Reserva para {{ booking.property.name }}</p>
-            <div>
-                <p>Llegada => {{ booking.arrival }}</p>
-                <p>Salida => {{ booking.departure }}</p>
-                <p>Numero de personas => {{ booking.person_num }}</p>
-            </div>
-            <p>Pago inicial (Deposito): $MXN {{ booking.deposit_amount }}</p>
-            <p>Pago post check-in: $MXN {{ booking.balance_due }} </p>
-            <p>Total a pagar: $MXN {{booking.total_amount}}</p>
-            {% comment %} Depósito {% endcomment %}
-            {% if booking.status == "cancelled" %}
-                <h3>Reserva cancelada</h3>
-                <form action="{% url 'remake_booking' pk=booking.id %}" method="post">
-                    {% csrf_token %}
-                    <button type="submit">Rehacer reserva</button>
-                </form>
-                <a href="{% url 'home' %}">Realizar otra</a>
-            {% elif booking.status == "expired" %}
-                <h3>Su reserva expiró</h3>
-                <a href="{% url 'home' %}">Realizar otra</a>
-            {% else %}
-                {% if booking.deposit_paid %}
-                    <p>Depósito pagado correctamente</p>
-                {% elif booking.deposit_payment and booking.deposit_payment.status == "requires_action" %}
-                    <p>Ocurrió un error con el pago del depósito, requiere acción</p>
-                    <a href="{% url 'retry_deposit' booking_id=booking.id %}" >Reintentar pago del depósito</a>
-                {% else %}
-                    <a href="{% url 'payment_start' booking_id=booking.id %}" >Pagar Ahora</a>
-                {% endif %}
-                {% if booking.balance_payment and booking.balance_payment.status == "paid" %}
-                    <p>Balance pagado correctamente</p>
-                {% elif booking.deposit_paid and not booking.balance_payment %}
-                    <a href="{% url 'start_balance' booking_id=booking.id %}">Pagar balance</a>
-                {% elif booking.balance_payment and booking.balance_payment.status == "requires_action" %}
-                    <p>Ocurrió un error con el pago del balance, requiere acción</p>
-                    <a href="{% url 'retry_balance' booking_id=booking.id %}" >Reintentar pago del balance</a>
-                {% endif %}
-                <br>
-                <a href ="{% url 'cancel_booking_sure' booking_id=booking.id %}" >Cancelar mi reserva</a>
-            {% endif %}
-        {% empty %}
-            <h1>No hay ninguna reserva en este momento</h1>
-            <a href="{% url 'home' %}" >Reservar</a>
-        {% endfor %}
-        <p>Si quieres cambiar tu contraseña <a href="{% url 'password_change' %}">Pulsa aquí</a></p>
-    
+<h1>Mis Reservas</h1>
+
+{% for booking in bookings %}
+  <h2>Detalles de la reserva</h2>
+  <h3>Estado de la reserva: {{ booking.get_status_display }}</h3>
+  <p>Reserva para {{ booking.property.name }}</p>
+  <div>
+    <p>Llegada : {{ booking.arrival }}</p>
+    <p>Salida : {{ booking.departure }}</p>
+    <p>Numero de personas => {{ booking.person_num }}</p>
+  </div>
+  <p>Pago inicial (Deposito): {{ booking.dep_before_chage_dates }} MXN$</p>
+  {% if booking.last_deposit_refund and booking.last_deposit_refund > 0 %}
+    <p>Reembolsado: {{ booking.last_deposit_refund }} MXN$</p>
+    <p>No hay más pagos pendientes</p>
+  {% else %}
+    <p>Pago post check-in: {{ booking.balance_due_runtime }} MXN$</p>
+  {% endif %}
+  <p>Total de la reserva: {{booking.total_amount}} MXN$</p>
+  {% comment %} Depósito {% endcomment %} 
+  {% if booking.status == "cancelled" %}
+    <h3>Reserva cancelada</h3>
+    <form action="{% url 'remake_booking' pk=booking.id %}" method="post">
+      {% csrf_token %}
+      <button type="submit">Rehacer reserva</button>
+    </form>
+    <a href="{% url 'home' %}">Realizar otra</a>
+  {% elif booking.status == "expired" %}
+    <h3>Su reserva expiró</h3>
+    <a href="{% url 'home' %}">Realizar otra</a>
+  {% else %} 
+    {% if booking.deposit_paid %}
+      <p>Depósito pagado correctamente</p>
+      <a href="{% url 'booking_change_dates_start' pk=booking.id %}"></a>
+    {% elif booking.deposit_payment and booking.deposit_payment.status == "requires_action" %}
+      <p>Ocurrió un error con el pago del depósito, requiere acción</p>
+      <a href="{% url 'retry_deposit' booking_id=booking.id %}">Reintentar pago del depósito</a>
+    {% else %}
+      <a href="{% url 'payment_start' booking_id=booking.id %}">Pagar Ahora</a>
+    {% endif %} 
+    {% if booking.balance_payment and booking.balance_payment.status == "paid" %}
+      <p>Balance pagado correctamente</p>
+    {% elif booking.deposit_paid and not booking.balance_payment and not booking.last_deposit_refund %}
+      <a href="{% url 'start_balance' booking_id=booking.id %}">Pagar balance</a>
+    {% elif booking.balance_payment and booking.balance_payment.status == "requires_action" %}
+      <p>Ocurrió un error con el pago del balance, requiere acción</p>
+      <a href="{% url 'retry_balance' booking_id=booking.id %}">Reintentar pago del balance</a>
+    {% endif %}
+  {% endif %}
+  <br/>
+  <a href="{% url 'cancel_booking_sure' booking_id=booking.id %}">Cancelar mi reserva</a>
+  <a href="{% url 'booking_change_dates_start' pk=booking.id %}">Modificar fechas</a>
+{% empty %}
+  <h1>No hay ninguna reserva en este momento</h1>
+  <a href="{% url 'home' %}">Reservar</a>
+{% endfor %}
+<p>
+  Si quieres cambiar tu contraseña
+  <a href="{% url 'password_change' %}">Pulsa aquí</a>
+</p>
 {% endblock %}
