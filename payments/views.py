@@ -12,7 +12,7 @@ from django.utils.timezone import make_aware, now, timedelta
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from properties.models import Property
-from bookings.models import Booking
+from bookings.models import Booking, BookingChangeLog
 from .models import Payment, RefundLog
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
@@ -20,6 +20,7 @@ from .services import *
 from django.db import IntegrityError
 from django.db.models import F, Value
 from django.db.models.functions import Coalesce
+from .services import reschedule_balance_charge
 
 
 # Create your views here.
@@ -28,6 +29,10 @@ assert settings.STRIPE_SECRET_KEY, "STRIPE_SECRET_KEY no está cargada (None/vac
 stripe.api_key = settings.STRIPE_SECRET_KEY
 def to_cents(mx_decimal):
     return int(mx_decimal * Decimal("100").quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+def _round(num):
+    return num.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
 
 class StartCheckoutView(LoginRequiredMixin, View):
     #Cobrar el 30%, actualizar modelo Booking y Payments, 
@@ -203,6 +208,7 @@ def stripe_webhook(request):
         session = obj
         booking_id = session.get("metadata", {}).get("booking_id")
         payment_id = session.get("metadata", {}).get("payment_id")
+        payment_role = (session.get("metadata", {}) or {}).get("payment_role")
         pi_id = session.get("payment_intent")
         customer_id = session.get("customer")
 
@@ -218,34 +224,78 @@ def stripe_webhook(request):
             pi["payment_method"]["id"] if isinstance(pi.get("payment_method"), dict)
             else pi.get("payment_method")
         )
-
-        try:
+        
+        with transaction.atomic():
             booking = Booking.objects.get(pk=booking_id)
             payment = Payment.objects.get(pk=payment_id, booking=booking)
-        except (Booking.DoesNotExist, Payment.DoesNotExist):
-            return HttpResponse(status=200)
 
-        # Actualiza estados y guarda credenciales para el 70%
-        if payment.status != "paid":
+            # Actualiza estados y guarda credenciales para el 70%
+            if payment.status != "paid":
+                payment.status = "paid"
+                payment.save(update_fields=["status"])
+
+            change_log_id = (session.get("metadata") or {}).get("change_log_id") or (payment.metadata or {}).get("change_log_id")
+
+            update = ["status"]
+            if booking.status != "confirmed":
+                booking.status = "confirmed"
+            if customer_id and booking.stripe_customer_id != customer_id:
+                booking.stripe_customer_id = customer_id
+                update.append("stripe_customer_id")
+            if payment_method_id and booking.stripe_payment_method_id != payment_method_id:
+                booking.stripe_payment_method_id = payment_method_id
+                update.append("stripe_payment_method_id")
+
+            # Si es (o era) un top-up de depósito, recalcular balance y anular otros pendientes
+            if payment.payment_type == "deposit" and payment.metadata.get("payment_role") == "deposit_topup":
+                if change_log_id:
+                    try:
+                        clog = BookingChangeLog.objects.select_for_update().get(pk=change_log_id, booking=booking)
+                        if clog.status == "pending":
+                            booking.arrival = clog.new_arrival
+                            booking.departure = clog.new_departure
+                            booking.total_amount = _round(clog.new_T)
+                            booking.deposit_amount = _round(clog.deposit_target)
+                            # recalcula balance con depósitos/saldos reales
+                            booking.balance_due = compute_balance_due_snapshot(booking)
+                            update += ["arrival","departure","total_amount","deposit_amount","balance_due"]
+                            # marca el log como aplicado
+                            clog.status = "applied"
+                            clog.save(update_fields=["status"])
+                            
+                            when = booking.arrival + timedelta(days=2)
+                            reschedule_balance_charge(booking, when)
+
+                            # invalida otros logs pendientes
+                            BookingChangeLog.objects.filter(booking=booking, status="pending").exclude(pk=clog.pk)\
+                                .update(status="superseded", superseded_at=now())
+                    except BookingChangeLog.DoesNotExist:
+                        pass
+
+                # Anula otros top-ups pendientes para que no bloqueen el cobro automático del balance
+                (Payment.objects
+                    .filter(
+                        booking=booking,
+                        payment_type="deposit",
+                        status__in=["pending", "requires_action"],
+                        metadata__payment_role="deposit_topup",
+                    )
+                    .exclude(pk=payment.pk)
+                    .update(status="void", superseded_at=now()))
+                if "balance_due" not in update:
+                    booking.balance_due = compute_balance_due_snapshot(booking)
+                    update.append("balance_due")        
+
+            
+            booking.save(update_fields=update)
+
+            when = booking.arrival + timedelta(days=2)
+            reschedule_balance_charge(booking, when)
+
+            
+            payment.stripe_payment_intent_id = pi_id
             payment.status = "paid"
-            payment.save(update_fields=["status"])
-
-        update = ["status"]
-        if booking.status != "confirmed":
-            booking.status = "confirmed"
-        if customer_id and booking.stripe_customer_id != customer_id:
-            booking.stripe_customer_id = customer_id
-            update.append("stripe_customer_id")
-        if payment_method_id and booking.stripe_payment_method_id != payment_method_id:
-            booking.stripe_payment_method_id = payment_method_id
-            update.append("stripe_payment_method_id")
-        
-        booking.save(update_fields=update)
-
-        
-        payment.stripe_payment_intent_id = pi_id
-        payment.status = "paid"
-        payment.save(update_fields=["stripe_payment_intent_id", "status"])
+            payment.save(update_fields=["stripe_payment_intent_id", "status"])
 
     elif etype == "payment_intent.payment_failed":
         pi = obj
@@ -267,7 +317,7 @@ def stripe_webhook(request):
             payment.status = "requires_action"
             payment.save(update_fields=["status"])
 
-      
+    
     elif etype in ("refund.updated", "charge.refunded"):
         refunds = []
         if etype == "refund.updated" and obj.get("object") == "refund":

@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('properties', '0001_initial'),
+        ('properties', '__first__'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

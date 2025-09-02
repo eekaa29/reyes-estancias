@@ -13,6 +13,11 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 import environ
+from celery.schedules import crontab
+
+#SITE_BASE_URL:
+SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://127.0.0.1:8000")
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -52,7 +57,7 @@ INSTALLED_APPS = [
 
 
 TAILWIND_APP_NAME = 'theme'
-NPM_BIN_PATH = r"C:/Program Files/nodejs/npm.cmd"
+NPM_BIN_PATH = "/home/ekaitz-martin/.nvm/versions/node/v22.19.0/bin/npm"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -96,11 +101,11 @@ WSGI_APPLICATION = 'reyes_estancias.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'reyes_estancias',      # nombre de tu base
-        'USER': 'root',            # tu usuario MySQL
-        'PASSWORD': 'Ekaitz-2003', # tu password
-        'HOST': '127.0.0.1',
-        'PORT': '3306',
+        'NAME': env('DB_NAME'),      # nombre de tu base
+        'USER': env('DB_USER'),            # tu usuario MySQL
+        'PASSWORD': env('DB_PASSWORD'), # tu password
+        'HOST': env('DB_HOST'),
+        'PORT': env('DB_PORT'),
     }
 }
 
@@ -143,8 +148,8 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 #Media files
-# MEDIA_URL = "/media/"
-# MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -169,3 +174,22 @@ DEFAULT_FROM_EMAIL = 'no-reply@reyesestancias.com'
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")  # lo pondrás tras crear el webhook
+
+
+# Celery (Redis como broker y backend)
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/1"  # opcional; útil para ver estados
+CELERY_TASK_ALWAYS_EAGER = False
+CELERY_TIMEZONE = "America/Mexico_City"
+CELERY_ENABLE_UTC = True
+CELERY_BEAT_SCHEDULE = {
+    "charge-balances-every-15-min": {
+        "task": "payments.tasks.scan_and_charge_balances",
+        "schedule": crontab(minute="*/15"),
+        "args": (SITE_BASE_URL,),  # usa tu base
+    },
+}
+# CELERY TESTS
+SITE_BASE_URL = "http://127.0.0.1:8000"
+CELERY_TASK_ALWAYS_EAGER = True        # ejecuta tasks inline en tests
+CELERY_TASK_EAGER_PROPAGATES = True    # si falla, revienta el test

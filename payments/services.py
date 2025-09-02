@@ -11,12 +11,29 @@ from django.shortcuts import get_object_or_404, redirect
 from .models import Payment
 from django.db.models import Sum
 from properties.models import Property
+from django.db.models import Sum, Q, Value
+from django.db.models.functions import Coalesce
+from django.utils import timezone
+from celery.result import AsyncResult
+from django.conf import settings
 
 DEPOSIT_RATE = Decimal("0.30")
 HALF_RATE    = Decimal("0.50")
 FULL_RATE    = Decimal("1.00")
+TOPUP_TTL_MIN = 10
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+def _build_success_cancel(booking, request=None, base_url=None):
+    base = None
+    if request is not None:
+        # quita barra final; build_absolute_uri('/') te da la base con slash
+        base = request.build_absolute_uri('/').rstrip('/')
+    else:
+        base = (base_url or getattr(settings, "SITE_BASE_URL", None) or "http://127.0.0.1:8000").rstrip('/')
+    success_url = f"{base}{reverse('payment_success')}?booking_id={booking.id}"
+    cancel_url  = f"{base}{reverse('payment_cancel')}?booking_id={booking.id}"
+    return success_url, cancel_url
 
 def _to_cents(mx: Decimal) -> int:
     return int((mx * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -25,7 +42,7 @@ def ensure_balance_payment(booking, payment_type, amount):
     with transaction.atomic():
         p = (booking.payments
              .select_for_update()
-             .filter(payment_type="balance", status__in=["pending","requires_action"])
+             .filter(payment_type=payment_type, status__in=["pending","requires_action"])
              .order_by("-id")
              .first())
         if p:
@@ -42,7 +59,11 @@ def ensure_balance_payment(booking, payment_type, amount):
             currency="MXN",
         )
 
-def charge_offsession_with_fallback(booking, request, amount, payment_type, description):
+def charge_offsession_with_fallback(
+        booking, request = None,
+        amount = None, 
+        payment_type = "balance",
+        description = "Saldo pendiente", *, base_url: str | None = None):
     """
     Intenta cobrar el saldo (70%) off-session. Si falla, crea Checkout Session y envía email con el link.
     Retorna un string corto con el resultado: "paid" | "requires_action" | "failed".
@@ -54,9 +75,6 @@ def charge_offsession_with_fallback(booking, request, amount, payment_type, desc
 
     if amount <= 0:
         return {"status": "skipped", "msg": "Importe cero"}
-    
-    if not (booking.stripe_payment_method_id and booking.stripe_customer_id):
-        return {"status" : "missin_method"}
 
     if not booking.balance_due or booking.balance_due <= 0:
         return  {"status": "no balance", "payment": payment}
@@ -127,8 +145,7 @@ def charge_offsession_with_fallback(booking, request, amount, payment_type, desc
     #Si no ha entrado en el if de arriba, significa que no se ha podido realizar el pago,
     #y si no ha entrado en el exept de justo encima, significa que ha dado Card.error
     #Continuamos con el flujo creamos sesión y le mandamos link paga que pague manualmente
-    success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
-    cancel_url  = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
+    success_url, cancel_url = _build_success_cancel(booking, request=request, base_url=base_url)
 
     session = stripe.checkout.Session.create(
         mode="payment",
@@ -172,6 +189,43 @@ def charge_offsession_with_fallback(booking, request, amount, payment_type, desc
         fail_silently=False,
     )
     return {"status": "requires_action", "payment": payment, "checkout_url": session.url}
+
+
+def reschedule_balance_charge(booking, when, base_url: str | None = None):
+    
+    from payments.tasks import charge_balance_for_booking
+
+    from django.utils import timezone
+    from django.conf import settings
+
+    """
+    Programa (o reprograma) el cobro del balance para un booking en 'when' (ETA).
+    Guarda task_id y ETA en el modelo para poder revocarla si cambian las fechas.
+    """
+
+    if timezone.is_naive(when):
+        when = timezone.make_aware(when, timezone.get_current_timezone())
+
+    
+    #Revocar tareas anteriores:
+
+    if getattr(booking, "balance_charge_task_id", None):
+        try:
+            AsyncResult(booking.balance_charge_task_id).revoke()
+        except Exception:
+            pass
+
+    base = (base_url or getattr(settings,"SITE_BASE_URL", None) or "http://127.0.0.1:8000")
+
+    #Encolar ETA
+    result = charge_balance_for_booking.apply_async((booking, base), eta=when)
+
+    #Tracking de la task:
+    booking.balance_charge_task_id = result.id
+    booking.balance_charge_eta = when
+    booking.save(update_fields=["balance_charge_task_id", "balance_charge_eta"])
+
+    return {"scheduled_for": when, "task_id": result.id}
 
 
 #####################################################################################################################
@@ -272,6 +326,16 @@ def refund_payment(payment, amount, reason="requested_by_customer"):
 def _round(x):
     return x.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+
+def has_current_pending_deposit_topup(booking) -> bool:
+    from payments.models import Payment
+    return Payment.objects.filter(
+        booking=booking,
+        payment_type="deposit",
+        status__in=["pending", "requires_action"],
+        metadata__payment_role="deposit_topup",
+    ).exists()
+
 def get_paid_deposit_amount(booking):
     """
     Suma de depósitos 'paid' (payment_type='deposit') menos lo ya reembolsado.
@@ -285,7 +349,7 @@ def get_paid_deposit_amount(booking):
     return _round(Decimal(paid) - refunded)
 
 def create_deposit_topup_checkout(booking, request, amount, 
-    description="Depósito adicional para el cambio de fechas"):
+    description="Depósito adicional para el cambio de fechas",*, change_log_id):
 
     """
     Crea un Payment (payment_type='deposit') y una Checkout Session para cobrar SOLO el top-up.
@@ -296,13 +360,51 @@ def create_deposit_topup_checkout(booking, request, amount,
         return {"status": "skipped", "msg": "Importe adicional no requerido"}
     
     with transaction.atomic():
-        payment = Payment.objects.create(
+        recent_threshold = now() - timedelta(minutes=TOPUP_TTL_MIN)
+        
+        prev = (Payment.objects.select_for_update().filter(
             booking=booking,
             payment_type="deposit",
-            amount=amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-            currency="MXN",
-            status="pending",
-        )
+            status__in=["pending", "requires_action"],
+            metadata__payment_role="deposit_topup").order_by("-created_at").first())
+    if (prev and prev.amount == amount and prev.metadata.get("change_log_id") == change_log_id and prev.stripe_checkout_session_id):
+        try:
+            session = stripe.checkout.Session.retrieve(prev.stripe_checkout_session_id)
+            return {"status": "pending", "payment":prev, "checkout_url": session.url}
+        except Exception:
+            pass
+    
+    if prev and prev.metadata.get("change_log_id") != change_log_id and prev.stripe_checkout_session_id:
+        try:
+            stripe.checkout.Session.expire(prev.stripe_checkout_session_id)
+        except Exception:
+            pass
+
+    (Payment.objects.filter(
+        booking=booking,
+        payment_type="deposit",
+        metadata__payment_role="deposit_topup",
+        status__in=["pending", "requires_action"],
+        ).exclude(metadata__change_log_id=change_log_id).update(status="superseded", superseded_at=now()))
+    
+    #rellenamos nuevos campos
+    client_ref = f"booking:{booking.id}, topup:{int(now().timestamp())}"
+    #idempotencia
+    bucket = int(now().timestamp() // (TOPUP_TTL_MIN * 60))
+    idem_key = f"topup:{booking.id}:{_to_cents(amount)}:clog:{change_log_id}"
+
+
+    payment = Payment.objects.create(
+        booking=booking,
+        payment_type="deposit",
+        amount=amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        currency="MXN",
+        status="pending",
+        metadata={"payment_role":"deposit_topup", "change_log_id": change_log_id},
+        client_reference_id=client_ref,
+        idempotency_key=idem_key,
+        expires_at=now() + timedelta(minutes=TOPUP_TTL_MIN),
+    )
 
     success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
     cancel_url = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
@@ -316,7 +418,9 @@ def create_deposit_topup_checkout(booking, request, amount,
             "setup_future_usage":"off_session",
             "metadata":{"booking_id":str(booking.id), 
                         "payment_id":str(payment.id),
-                        "type": "deposit"},
+                        "type": "deposit",
+                        "payment_role":"deposit_topup",
+                        "change_log_id": str(change_log_id)},
 
         },
         line_items=[{
@@ -334,7 +438,10 @@ def create_deposit_topup_checkout(booking, request, amount,
             "booking_id":str(booking.id),
             "payment_id": str(payment.id),
             "type": "deposit",
+            "payment_role": "deposit_topup",
+            "change_log_id": str(change_log_id),
         },
+        idempotency_key=idem_key,
     )
 
     payment.stripe_checkout_session_id = session.id
@@ -382,7 +489,7 @@ def trigger_refund_for_deposit_diff(booking, amount, prefer_single = True):
         if remaining <=0:
             break
         refunded = getattr(deposit, "refunded_amount", Decimal("0.00"))
-        available = max(deposit.amount - refunded), Decimal("0.00")
+        available = max(deposit.amount - refunded, Decimal("0.00"))
         if available <= 0:
             continue
         to_refund = _round(min(available, remaining))
@@ -395,9 +502,11 @@ def trigger_refund_for_deposit_diff(booking, amount, prefer_single = True):
         remaining -= to_refund
     return result
 
-def reschedule_balance_charge(booking, when):
-    """
-    Punto de enganche para tu cron/tarea que cobra el balance off-session.
-    Aquí solo devolvemos un dict; integra tu scheduler donde te convenga.
-    """
-    return {"scheduled_for": when}
+def compute_balance_due_snapshot(booking) -> Decimal:
+    agg = Payment.objects.filter(booking=booking).aggregate(
+        dep=Coalesce(Sum("amount", filter=Q(payment_type="deposit", status="paid")), Decimal("0.00")),
+        bal=Coalesce(Sum("amount", filter=Q(payment_type="balance", status="paid")), Decimal("0.00")),
+        ref=Coalesce(Sum("refunded_amount", filter=Q(refund_status="paid")), Decimal("0.00")),
+    )
+    total_paid_net = agg["dep"] + agg["bal"] - agg["ref"]
+    return _round(max(booking.total_amount - total_paid_net, Decimal("0.00")))

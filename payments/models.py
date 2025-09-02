@@ -8,7 +8,11 @@ class Payment(models.Model):
         ("pending", "Pendiente"),
         ("paid", "Pagado"),
         ("failed", "Fallido"),
-        ("requires_action", "Requiere intervención")
+        ("requires_action", "Requiere intervención"),
+        #nuevos estados para gestion de idempotencia y duplicados
+        ("void", "Anulado"),
+        ("superseded", "Reemplazado"),
+        ("expired", "Caducado"),
     ]
     REFUND_STATUS = [
         ("none", "Nulo"),
@@ -38,6 +42,14 @@ class Payment(models.Model):
     refund_count = models.PositiveIntegerField(default=0, verbose_name="Número de reembolsos")
     last_refund_at = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de último reembolso")
     refund_reason = models.CharField(max_length=64, blank=True, null=True, verbose_name="Razón de reembolso")
+
+    #Gestión de duplicados e idempotencia
+    metadata = models.JSONField(verbose_name="Metadatos", blank=True, default=dict)
+    client_reference_id = models.CharField(null=True, blank=True, max_length=255, verbose_name="Id referencia del cliente")
+    idempotency_key = models.CharField(blank=True, null=True, max_length=255, verbose_name="Clave de idempotencia")
+    superseded_at = models.DateTimeField(blank=True, null=True, verbose_name="Fecha de reemplazo")
+    expires_at = models.DateTimeField(blank=True, null=True, verbose_name="Fecha de expiración")
+    
 
     #Helpers
 

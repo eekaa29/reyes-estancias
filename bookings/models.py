@@ -28,6 +28,9 @@ class Booking(models.Model):
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Id cliente stripe")
     stripe_payment_method_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Método de pago")
     
+    #ETA PARA COBRO OFF-SESSION CON CELERY 
+    balance_charge_task_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Identificador de la tarea")
+    balance_charge_eta = models.DateTimeField(null=True, blank=True, verbose_name="Fecha para cobro automático de balance")
     
     def deposit_payment(self):
         return self.payments.filter(payment_type="deposit").order_by("-id").first()
@@ -66,20 +69,36 @@ class Booking(models.Model):
     
 
 class BookingChangeLog(models.Model):
+    LOG_STATUS_CHOICES = [
+        ("pending", "Pendiente"),
+        ("applied", "Aplicado"),
+        ("superseded", "Reemplazado"),
+    ]
+
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="change_logs", verbose_name="Reserva modificada")
     actor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Usuario")
+    
     old_arrival = models.DateTimeField(verbose_name="Llegada antigua")
     old_departure = models.DateTimeField(verbose_name="Salida antigua")
     new_arrival = models.DateTimeField(verbose_name="Llegada nueva")
     new_departure = models.DateTimeField(verbose_name="Salida nueva")
+    
     old_T = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Antiguo total")
     new_T = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Nuevo total")
+    
     paid_dep = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Depósito pagado", default=Decimal("0.00"))
     deposit_topup = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Depósito extra")
     deposit_target = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Nuevo depósito")
     deposit_refund = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Devolución")
+    
     old_balance = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Balance antiguo")
     new_balance_due = models.DecimalField(max_digits=10, decimal_places=2,default=Decimal("0.00"), verbose_name="Nuevo balance")
+    
+    status = models.CharField(max_length=60, choices=LOG_STATUS_CHOICES, verbose_name="Estado", default="pending")
+    topup_payment = models.ForeignKey("payments.Payment", on_delete=models.SET_NULL, blank=True, null=True, related_name="change_logs", verbose_name="Pago top up ")
+    checkout_session_id = models.CharField(max_length=255, null=True, blank=True, verbose_name="Checkout ID (Stripe)")
+    superseded_at = models.DateTimeField(null=True, blank=True)
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Creado")
 
     class Meta:

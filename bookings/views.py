@@ -99,18 +99,49 @@ class CancelBookingView(LoginRequiredMixin, View):
         with transaction.atomic():
             booking = (Booking.objects.select_for_update().get(pk=booking_id))
 
-        if self.request.user != booking.user and not self.request.user.is_staff :
-            messages.error(request, "Usuario no autorizado")
-            return redirect("home")
-        
-        if booking.status == "cancelled":
-            messages.info(request, "La reserva ya estaba cancelada")
-            return redirect("bookings_list")
-        
-        plan = compute_refund_plan(booking)
+            if self.request.user != booking.user and not self.request.user.is_staff :
+                messages.error(request, "Usuario no autorizado")
+                return redirect("home")
+            
+            if booking.status == "cancelled":
+                messages.info(request, "La reserva ya estaba cancelada")
+                return redirect("bookings_list")
+            
+            plan = compute_refund_plan(booking)
+            task_id_to_revoke = booking.balance_charge_task_id
+            booking.status = "cancelled"
+            booking.balance_charge_task_id = None
+            booking.balance_charge_eta = None
+            booking.save(update_fields=["status", "balance_charge_task_id", "balance_charge_eta"])
 
-        booking.status = "cancelled"
-        booking.save(update_fields=["status"])
+
+            # 3) Invalida pagos de BALANCE pendientes (y recoge sessions para expirarlas tras commit)
+            pending_balances = list(
+                Payment.objects.filter(
+                    booking=booking,
+                    payment_type="balance",
+                    status__in=["pending", "requires_action"],
+                ).values_list("id", "stripe_checkout_session_id")
+            )
+            # usa update() (si 'void' no está en choices, no pasa por validación de modelo)
+            if pending_balances:
+                Payment.objects.filter(id__in=[pid for pid, _ in pending_balances])\
+                    .update(status="void", superseded_at=timezone.now())
+
+        if task_id_to_revoke:
+            try:
+                AsyncResult(task_id_to_revoke).revoke()
+            except Exception:
+                pass
+
+        # Expira las Checkout Sessions abiertas de balance (si las hubiera)
+        for _, session_id in pending_balances:
+            if session_id:
+                try:
+                    stripe.checkout.Session.expire(session_id)
+                except Exception:
+                    pass
+
 
         penalty = plan["penalty"]
         if penalty and penalty > 0:
@@ -164,10 +195,10 @@ class RemakeBookingView(LoginRequiredMixin, View):
 
         #Comprobar si existe una rebooking en curso
         existing = (Booking.objects.filter(user=self.request.user, property=property, arrival=checkin,
-                                            departure=checkout, status="cancelled").exclude(hold_expires_at__lt=now()).first())
+                                            departure=checkout, status="pending").exclude(hold_expires_at__lt=now()).first())
         
         if existing:
-            messages.error(request, "Ya existe un reintento de reserva para esta reserva cancelada")
+            messages.error(request, "Ya existía un reintento de reserva, hemos recuperado ese intento para rehacer la reserva cancelada")
             return redirect("payment_start", booking_id=existing.id)
         
         if not property.is_available(checkin, checkout, cant_personas):

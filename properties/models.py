@@ -3,6 +3,8 @@ from django.utils.timezone import make_aware, now
 from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from core.tzutils import compose_aware_dt
+from django.db import models, transaction
+from django.db.models import Q
 # Create your models here.
 
 LIMPIEZA = Decimal("100.00")
@@ -11,6 +13,7 @@ TAX_IMPUESTOS = Decimal("0.16")
 class Property (models.Model):
     name = models.CharField(verbose_name= "Nombre", max_length=200)
     description = models.TextField(verbose_name="Descripción")
+    beds = models.CharField(verbose_name= "Número de camas", max_length=200, default="Cama matrimonial")
     max_people = models.IntegerField(verbose_name="Capacidad")
     nightly_price = models.DecimalField(verbose_name="Precio por Noche", null=True, blank=True, decimal_places=2, max_digits=10)
     address = models.CharField(max_length= 200, verbose_name="Localización")
@@ -118,7 +121,17 @@ class Property (models.Model):
 
 class PropertyImage(models.Model):
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="images")
-    image = models.ImageField(upload_to="properties", verbose_name="Imágen")
+    image = models.ImageField(upload_to="properties", verbose_name="Imagen")
+    cover = models.BooleanField(default=False, db_index=True, verbose_name="Portada")
+    position = models.PositiveIntegerField(default=0, help_text="Orden en la galería")
 
-    def __str__(self):
-        return f"Imagen de {self.property.name}"
+    class Meta:
+        ordering = ["position", "id"]
+        indexes = [models.Index(fields=["property", "cover"])]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.cover:
+            with transaction.atomic():
+                PropertyImage.objects.filter(property_id=self.property_id, cover=True)\
+                                     .exclude(pk=self.pk).update(cover=False)

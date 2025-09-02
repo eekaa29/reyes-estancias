@@ -1,17 +1,36 @@
 from django.shortcuts import render
 from django.views.generic.list import ListView
 from django.views.generic.detail import DetailView
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
-from .models import Property
+from .models import Property, PropertyImage
 from .forms import BookingForm
 from bookings.models import Booking
+from django.db.models import Prefetch
 # Create your views here.
 
 class PropertiesList(ListView):
     model = Property
     template_name = "properties/property_list.html"
+    context_object_name = "property_list"
 
+    def get_queryset(self):
+        cover_prefetch = Prefetch(
+            "images",
+            queryset=PropertyImage.objects.filter(cover=True)
+                     .only("id", "image", "property"),
+            to_attr="cover_list",
+        )
+        all_prefetch = Prefetch(
+            "images",
+            queryset=PropertyImage.objects.order_by("position", "id")
+                     .only("id", "image", "property"),
+            to_attr="all_images",
+        )
+        return (
+            Property.objects.all()
+            .prefetch_related(cover_prefetch, all_prefetch)
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

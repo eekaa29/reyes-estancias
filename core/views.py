@@ -13,8 +13,8 @@ class HomeView(FormView):
     def form_valid(self, form):
         cd = form.cleaned_data
         params = urlencode({
-            "checkin":cd['checkin'].date(),
-            "checkout":cd['checkout'].date(),
+            "checkin":cd['checkin'].isoformat(),
+            "checkout":cd['checkout'].isoformat(),
             "cant_personas":cd['cant_personas']})
         return redirect(f"properties/property_list/?{params}")
     

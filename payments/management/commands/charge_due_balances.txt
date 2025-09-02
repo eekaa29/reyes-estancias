@@ -1,0 +1,81 @@
+from django.core.management.base import BaseCommand
+from django.utils.timezone import now
+from datetime import timedelta
+from django.db.models import Q
+from django.contrib import messages
+from bookings.models import Booking
+from payments.models import Payment
+from payments.services import charge_balance_offsession_or_send_checkout
+from django.shortcuts import redirect
+
+class Command(BaseCommand):
+    help = "Cobra automáticamente el 70% off-session dos días después del check-in."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--base-url",
+            type=str,
+            default="http://127.0.0.1:8000",
+            help="Base URL para construir success/cancel URLs en los emails (producción: https://tu-dominio.com)",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Muestra qué cobraría sin ejecutar cargos.",
+        )
+
+    def has_pending_deposit(self,booking):
+        return Payment.objects.filter(
+            booking=booking, type="deposit",
+            status__in=["pending","requires_action"]).exists()
+
+    def handle(self, request, booking, *args, **opts):
+        base_url = opts["base_url"].rstrip("/")
+        dry = opts["dry_run"]
+
+        cutoff = now() - timedelta(days=2)
+
+        if self.has_pending_deposit(booking):
+            messages.error(request, "Hay depósitos sin abonar")
+            return redirect("bookings_list")
+
+        # Candidatas: confirmadas, con saldo > 0, check-in hace >= 2 días, con customer y payment_method
+        qs = (
+            Booking.objects
+            .filter(
+                status="confirmed",
+                balance_due__gt=0,
+                arrival__lte=cutoff,
+                stripe_customer_id__isnull=False,
+                stripe_payment_method_id__isnull=False,
+            )
+            # Evitar doble cobro si ya hay un balance succeeded
+            .exclude(
+                payments__payment_type="balance",
+                payments__status="paid",
+            )
+        )
+
+        count = qs.count()
+        self.stdout.write(self.style.NOTICE(f"Encontradas {count} reservas candidatas para cobro del saldo."))
+
+        processed = 0
+        for b in qs.iterator():
+            processed += 1
+            self.stdout.write(f"- Booking #{b.id} · saldo pendiente: {b.balance_due} MXN")
+
+            if dry:
+                continue
+
+            result = charge_balance_offsession_or_send_checkout(b, base_url)
+            if result == "succeeded":
+                self.stdout.write(self.style.SUCCESS(f"  Cobro off-session OK (booking #{b.id})"))
+            elif result == "requires_action":
+                self.stdout.write(self.style.WARNING(f"  Se envió email con link de pago (booking #{b.id})"))
+            elif result == "failed":
+                self.stdout.write(self.style.ERROR(f"  Fallo y no se pudo crear Checkout (booking #{b.id})"))
+            elif result == "no_balance":
+                self.stdout.write(self.style.WARNING(f"  Sin saldo (booking #{b.id})"))
+
+        self.stdout.write(self.style.SUCCESS(f"Proceso terminado. Procesadas {processed} reservas."))
+

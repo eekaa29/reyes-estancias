@@ -1,20 +1,40 @@
 {% extends "core/base.html" %}
 {% load static %}
+
 {% block content %}
-    <h1>Lista de Propiedades</h1>
-    {% for property in property_list %}
-        <h1>{{property.name}}</h1>
-        <h2>{{property.description}}</h2>
-        <p>{{property.max_people}}</p>
-        {% if checkin and checkout and cant_personas %}
-            {% if property.available %}
-                <span>Disponible</span>
-                <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
-            {% else %}
-                <span>No Disponible</span>
-            {% endif %}
+<h1 class="mt-14 mb-14 uppercase font-bold tracking-[-0.06em] text-5xl md:text-7xl">PROPIEDADES</h1>
+
+{% for property in property_list %}
+  {% with cover=property.cover_list.0 %}
+    {% if cover %}
+      {% with img=cover %}
+        <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
+          <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
+        </div>
+      {% endwith %}
+    {% else %}
+      {% with img=property.all_images.0 %}
+        <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
+          {% if img %}
+            <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
+          {% else %}
+            <div class="w-full h-full grid place-items-center text-slate-400">Sin imagen</div>
+          {% endif %}
+        </div>
+      {% endwith %}
+    {% endif %}
+  {% endwith %}
+
+  <a href="{% url 'property_detail' property.id %}" class="uppercase font-medium tracking-[-0.06em]">
+    {{ property.name }}
+  </a>
+    {% if checkin and checkout and cant_personas %}
+        {% if property.available %}
+            <span>Disponible</span>
+            <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
         {% else %}
-            <a href="{% url 'property_detail' property.id %}">Saber Más</a>
+            <span>No Disponible</span>
         {% endif %}
-    {%  endfor %}
+    {% endif %}
+{%  endfor %}
 {% endblock %}
