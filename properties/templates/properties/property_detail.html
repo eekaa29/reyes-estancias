@@ -1,32 +1,81 @@
 {% extends "core/base.html" %}
 {% load static %}
+    {# Navbar encima de la imagen #}
+{% block nav_position %}absolute inset-x-0 top-0 z-50{% endblock %}
+{% block nav_colors %}bg-transparent text-white{% endblock %}
+{% block menu_btn_variant %}bg-white/10 text-white ring-1 ring-white/60 backdrop-blur hover:bg-white/20{% endblock %}
 {% block content %}
-    <h1>{{property.name}}</h1>
-        {{property.description}}
-        {{property.address}}
-        {{property.max_people}}
-        {% if checkin and checkout and cant_personas %}
-            {% if active_booking and deposit_payment %}
-                {% if deposit_payment.status == "requires_action" or deposit_payment.status == "failed" %}
-                    <p>Hubo un problema con el pago del depósito</p>
-                    <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
-                {% elif deposit_payment.status == "paid" %}
-                    <p>Pago del depósito exitoso</p>
-                    <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
-                {% endif %}
-            {% else %}
-                <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
-                <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
-            {% endif %}
-        {% elif active_booking and deposit_payment %}
-            <p>Hay una reserva en curso.</p>
-            <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+  <!-- HERO con imagen de fondo -->
+  <section class="relative h-[100vh] min-h-[480px]">
+    {% with cover=property.cover_list.0 %}
+        {% if cover %}
+            {% with img=cover %}
+              <a href="{% url 'property_detail' property.id %}">
+                <div class=" bg-slate-100 p-4">
+                <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="absolute inset-0 w-full h-full object-cover" loading="lazy">
+                </div>
+              </a>
+              
+            {% endwith %}
         {% else %}
-            <h3>Selecciona fechas para comprobar disponibilidad</h3>
-            <form method="post">
-                {% csrf_token %}
-                {{ form.as_p }}
-                <button type="submit">Comprobar</button>
-            </form>
+            {% with img=property.all_images.0 %}
+            <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
+                {% if img %}
+                <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
+                {% else %}
+                <div class="w-full h-full grid place-items-center text-slate-400">Sin imagen</div>
+                {% endif %}
+            </div>
+            {% endwith %}
         {% endif %}
+    {% endwith %}
+    <!-- Oscurecedor para legibilidad -->
+    <div class="absolute inset-0 bg-black/55"></div>
+    <div class="relative z-10 h-full max-w-5xl flex flex-col items-start justify-center pb-10 text-white gap-6 pl-4 md:pl-24">
+        <h1 class=" text-3xl md:text-7xl uppercase tracking-[-0.06em] mb-28 ">{{property.name}}</h1>
+            <p class="text-2xl tracking-[-0.06em]">{{property.description}}</p>
+            <div class="font-bold uppercase flex">
+                <p class="max-w-96 justify-start tracking-[-0.06em]">{{property.address}}</p>
+                <p class="ml-20 md:ml-96">CAPACIDAD | {{property.max_people}}</p>
+            </div>
+            {% if checkin and checkout and cant_personas %}
+                {% if active_booking and deposit_payment %}
+                    {% if deposit_payment.status == "requires_action" or deposit_payment.status == "failed" %}
+                        <p>Hubo un problema con el pago del depósito</p>
+                        <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+                    {% elif deposit_payment.status == "paid" %}
+                        <p>Pago del depósito exitoso</p>
+                        <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+                    {% endif %}
+                {% else %}
+                    <div class="flex flex-col text-xl gap-6">
+                        <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
+                        <a class="animate-bounce italic" href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+                    </div>
+                {% endif %}
+                    </div>
+            {% elif active_booking and deposit_payment %}
+                <p>Hay una reserva en curso.</p>
+                <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+            {% else %}
+                <h3>Selecciona fechas para comprobar disponibilidad</h3>
+                <form method="post" class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl backdrop-blur md:col-start-1">
+                {% csrf_token %}
+                <div class="">
+                    {{ form.checkin }}
+                </div>
+                <div class="class">
+                    {{ form.checkout }}
+                </div>
+                <div class="class">
+                    {{ form.cant_personas }}
+                </div>
+                <div class="flex justify-end">
+                    <button class="inline-flex items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">Comprobar</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    </section>
 {% endblock %}

@@ -8,21 +8,41 @@
     {% load static %} {% tailwind_css %}
     {% block head_extra  %}{% endblock  %}
   </head>
-  <body>
+  <body class="bg-slate-100">
     <header class="{% block nav_position %}{% endblock %}">
       <nav
         class="relative mx-auto max-w-7xl px-4 py-4 flex items-center justify-between
-              {% block nav_colors %}bg-white text-slate-900{% endblock %}">
-        <a href="{% url 'home' %}">
-          <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight">Reyes Estancias</h1>
-        </a>
+              {% block nav_colors %} text-slate-900{% endblock %}">
+        <h1 class="m-0 text-3xl sm:text-4xl font-semibold tracking-tight">
+          <a href="{% url 'home' %}" class="group inline-block align-top">
+            <!-- Clip de 1 línea -->
+            <span class="relative block overflow-hidden h-[1em] leading-[1]">
+              <!-- Cinta de 2 líneas; al hover sube 1 línea -->
+              <span class="block transform-gpu transition-transform duration-300 ease-[cubic-bezier(.2,.7,0,1)]
+                          group-hover:-translate-y-1/2">
+                <span class="block">Reyes Estancias</span>
+                <span class="block" aria-hidden="true">Reyes Estancias</span>
+              </span>
+            </span>
+          </a>
+        </h1>
 
-        <!-- Botón MENÚ -->
+
+        <!-- Botón MENÚ con efecto roll-up solo en escritorio -->
         <button id="menu-btn" type="button"
-          class="uppercase font-bold tracking-wide px-4 py-2 rounded-full
-                {% block menu_btn_variant %}bg-black text-white{% endblock %}"
+          class="group relative inline-flex items-center rounded-full px-4 py-2
+                uppercase font-bold tracking-wide {% block menu_btn_variant %} text-black {% endblock %}"
           aria-haspopup="true" aria-expanded="false" aria-controls="menu-panel">
-          Menú
+
+          <!-- Clip a 1 línea -->
+          <span class="relative inline-block overflow-hidden h-[1.1em] leading-[1.1] align-top">
+            <!-- Cinta que se desplaza al hover -->
+            <span class="block transform transition-transform duration-300 ease-[cubic-bezier(.2,.7,0,1)]
+                        group-hover:-translate-y-1/2">
+              <span class="block">MENU</span>
+              <span class="block" aria-hidden="true">MENU</span>
+            </span>
+          </span>
         </button>
 
         <!-- Panel desplegable -->
@@ -54,20 +74,6 @@
         </div>
       </nav>
     </header>
-
-    {% comment %} {% if messages %}
-    <div class="fixed top-4 right-4 space-y-2 z-50">
-      {% for message in messages %}
-      <div
-        class="px-4 py-3 rounded-lg shadow text-sm transition {% if message.tags == 'success' %}bg-green-100 text-green-800 {% elif message.tags == 'error' %}bg-red-100 text-red-800 {% elif message.tags == 'warning' %}bg-yellow-100 text-yellow-800 {% else %}bg-blue-100 text-blue-800{% endif %}"
-        role="status"
-        data-toast
-      >
-        {{ message }}
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}  {% endcomment %}
     {% block content %}{% endblock %}
     {% block body_extra %}{% endblock  %}
     <script>
@@ -99,17 +105,59 @@
         }
       });
     </script>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
   </body>
   <hr class="border-gray-300 border-0.1">
   <footer class="grid grid-cols-2 m-3">
-    <div class="font-bold uppercase tracking-[-0.04em]">
-      <p>CONTACTO</p>
-      <p>+52 3314494215</p>
-      <p>+34 672921265</p>
-      <a href="mailto:Reyesestancias@gmail.com">Reyesestancias@gmail.com</a>
+    <div class="font-semibold tracking-[-0.04em] space-y-1">
+      <p class="mb-2 font-bold">CONTACTO</p>
+      
+      <div class="flex flex-col gap-2">
+        <!-- Línea 1 -->
+        <a href="tel:+523314494215"
+          class="group inline-block overflow-hidden h-[1.05em] leading-[1.05]">
+          <span class="block transform-gpu transition-transform duration-300 ease-[cubic-bezier(.2,.7,0,1)]
+                      group-hover:-translate-y-1/2">
+            <span class="block">+52 3314494215</span>
+            <span class="block" aria-hidden="true">+52 3314494215</span>
+          </span>
+        </a>
+      
+
+        <!-- Línea 2 -->
+        <a href="tel:+34672921265"
+          class="group inline-block overflow-hidden h-[1.05em] leading-[1.05]">
+          <span class="block transform-gpu transition-transform duration-300 ease-[cubic-bezier(.2,.7,0,1)]
+                      group-hover:-translate-y-1/2">
+            <span class="block">+34 672921265</span>
+            <span class="block" aria-hidden="true">+34 672921265</span>
+          </span>
+        </a>
+      </div>
+      
+      <!-- Línea 3 -->
+      <a href="mailto:Reyesestancias@gmail.com"
+        class="group inline-block overflow-hidden h-[1.05em] leading-[1.05]">
+        <span class="block transform-gpu transition-transform duration-300 ease-[cubic-bezier(.2,.7,0,1)]
+                    group-hover:-translate-y-1/2">
+          <span class="block">Reyesestancias@gmail.com</span>
+          <span class="block" aria-hidden="true">Reyesestancias@gmail.com</span>
+        </span>
+      </a>
     </div>
+
     <div class="flex justify-end items-center">
-      <a href="{% url 'terminos_y_condiciones' %}" class="font-bold uppercase tracking-[-0.04em]">TERMINOS Y CONDICIONES</a>
+      <a href="{% url 'terminos_y_condiciones' %}"
+        class="group inline-block font-bold uppercase tracking-[-0.04em] overflow-hidden h-[1.05em] leading-[1.05]">
+        <span class="block transform-gpu transition-transform duration-300 ease-[cubic-bezier(.2,.7,0,1)]
+                    group-hover:-translate-y-1/2">
+          <span class="block">TÉRMINOS Y CONDICIONES</span>
+          <span class="block" aria-hidden="true">TÉRMINOS Y CONDICIONES</span>
+        </span>
+      </a>
     </div>
   </footer>
 </html>

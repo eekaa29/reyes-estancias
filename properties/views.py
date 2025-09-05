@@ -57,6 +57,25 @@ class PropertyDetail(DetailView):
     context_object_name = "property"
     success_url = reverse_lazy("bookings_list")
 
+    def get_queryset(self):
+        cover_prefetch = Prefetch(
+            "images",
+            queryset=PropertyImage.objects.filter(cover=True)
+                     .only("id", "image", "property"),
+            to_attr="cover_list",
+        )
+        all_prefetch = Prefetch(
+            "images",
+            queryset=PropertyImage.objects.order_by("position", "id")
+                     .only("id", "image", "property"),
+            to_attr="all_images",
+        )
+        return (
+            Property.objects.all()
+            .prefetch_related(cover_prefetch, all_prefetch)
+        )
+
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 

@@ -189,7 +189,9 @@ CELERY_BEAT_SCHEDULE = {
         "args": (SITE_BASE_URL,),  # usa tu base
     },
 }
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_RESULT_SERIALIZER = "json"
 # CELERY TESTS
 SITE_BASE_URL = "http://127.0.0.1:8000"
-CELERY_TASK_ALWAYS_EAGER = True        # ejecuta tasks inline en tests
 CELERY_TASK_EAGER_PROPAGATES = True    # si falla, revienta el test

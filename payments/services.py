@@ -206,7 +206,7 @@ def reschedule_balance_charge(booking, when, base_url: str | None = None):
     if timezone.is_naive(when):
         when = timezone.make_aware(when, timezone.get_current_timezone())
 
-    
+    base_str = str(base_url) if isinstance(base_url, Decimal) else (None if base_url is None else str(base_url))
     #Revocar tareas anteriores:
 
     if getattr(booking, "balance_charge_task_id", None):
@@ -215,10 +215,8 @@ def reschedule_balance_charge(booking, when, base_url: str | None = None):
         except Exception:
             pass
 
-    base = (base_url or getattr(settings,"SITE_BASE_URL", None) or "http://127.0.0.1:8000")
-
     #Encolar ETA
-    result = charge_balance_for_booking.apply_async((booking, base), eta=when)
+    result = charge_balance_for_booking.apply_async(args=[booking.pk, base_str], eta=when)
 
     #Tracking de la task:
     booking.balance_charge_task_id = result.id

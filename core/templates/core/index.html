@@ -11,7 +11,7 @@
 {# Navbar encima de la imagen #}
 {% block nav_position %}absolute inset-x-0 top-0 z-50{% endblock %}
 {% block nav_colors %}bg-transparent text-white{% endblock %}
-{% block menu_btn_variant %}bg-white/10 text-white ring-1 ring-white/60 backdrop-blur hover:bg-white/20{% endblock %}
+{% block menu_btn_variant %}text-white {% endblock %}
 
 {% block content %}
   <!-- HERO con imagen de fondo -->
@@ -44,9 +44,9 @@
     </div>  
     
   </section>
-  <section class="px-4 py-24">
+  <section class="px-4 py-24 bg-slate-100">
     <div class="flex flex-col">
-      <h2 class=" flex justify-start text-black font-bold text-7xl md:text-9xl md:max-w-16 pb-3 tracking-[-0.04em]">HOSPEDAJE DE REYES</h2>
+      <h2 class=" flex justify-start text-black font-bold text-7xl md:text-7xl md:max-w-16 pb-3 tracking-[-0.04em]">HOSPEDAJE DE REYES</h2>
       <p class="flex justify-end uppercase font-semibold text-base tracking-[-0.04em] ">(SOBRE NOSOTROS)</p>
     </div>
     <div class="mx-auto max-w-7xl px-4 flex flex-col items-center justify-center p-4">
@@ -62,7 +62,19 @@
         el número de apartamentos y de casas. Muchas cosas cambiaron desde aquellos años, pero lo que nunca cambiará es
         el compromiso familiar y de trabajadores para ofrecer el mejor servicio y que nuestros clientes se sientan como en casa.
       </p>
-      <a href="{% url 'property_list' %}" class=" mt-5 inline-flex items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">VER PROPIEDADES</a>
+      <p class="m-0 text-xl sm:text-2xl font-semibold tracking-tight mt-6">
+        <a href="{% url 'property_list' %}" class="group inline-block align-top">
+          <!-- Clip de 1 línea -->
+          <span class="relative block overflow-hidden h-[1em] leading-[1]">
+            <!-- Cinta de 2 líneas; al hover sube 1 línea -->
+            <span class="block transform-gpu transition-transform duration-300 ease-[cubic-bezier(.2,.7,0,1)]
+                        group-hover:-translate-y-1/2">
+              <span class="block italic">VER PROPIEDADES</span>
+              <span class="block" aria-hidden="true">VER PROPIEDADES</span>
+            </span>
+          </span>
+        </a>
+      </p>
     </div>
   </section>
   {% comment %} <section class="relative h-[100vh] min-h-[480px]">

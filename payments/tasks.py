@@ -6,19 +6,24 @@ from bookings.models import Booking
 from payments.models import Payment
 from .services import charge_offsession_with_fallback, compute_balance_due_snapshot
 from django.db.models import Q
+from decimal import Decimal
 
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def charge_balance_for_booking(self, booking_id, base_url):
+def charge_balance_for_booking(self, booking_id, base_str):
 
     """
     Cobra el balance de UNA reserva (idempotente).
     Reintenta si hay fallos transitorios.
     """
+
+    booking = Booking.objects.select_related("property", "user").get(pk=booking_id)
+    base = Decimal(base_str) if base_str is not None else None
+
     try:
         with transaction.atomic():
-            b = Booking.objects.select_for_update().get(pk=booking_id)
+            b = booking.objects.select_for_update().get(pk=booking_id)
             if b.status != "confirmed":
                 return "booking_not_confirmed"
 
@@ -58,7 +63,7 @@ def charge_balance_for_booking(self, booking_id, base_url):
             amount=amount, 
             payment_type="balance", 
             description="Cargo del 70%", 
-            base_url=base_url)
+            base_url=base)
         status = result.get("status") if isinstance(result, dict) else result
         if status in ("paid", "already_paid"):
             return "succeeded"

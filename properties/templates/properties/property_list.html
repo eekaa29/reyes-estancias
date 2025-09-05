@@ -2,39 +2,59 @@
 {% load static %}
 
 {% block content %}
-<h1 class="mt-14 mb-14 uppercase font-bold tracking-[-0.06em] text-5xl md:text-7xl">PROPIEDADES</h1>
-
-{% for property in property_list %}
-  {% with cover=property.cover_list.0 %}
-    {% if cover %}
-      {% with img=cover %}
-        <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
-          <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
-        </div>
-      {% endwith %}
-    {% else %}
-      {% with img=property.all_images.0 %}
-        <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
-          {% if img %}
-            <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
+  <h1 class="mt-14 mb-14 uppercase font-bold tracking-[-0.06em] text-5xl md:text-7xl pl-4">PROPIEDADES</h1>
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-3 px-3">
+    {% for property in property_list %}
+      <div class="flex flex-col bg-slate-100 p-2 rounded-xl border-4 border-slate-200 shadow-xl md:max-w-96 md:max-h-96 md:gap-1 mb-10 ml-5 mr-5 mt-5trasition delay-50 duration-200 ease-in-out hover:translate-y-1 hover:scale-105 md:hover-scale-110">
+        {% with cover=property.cover_list.0 %}
+          {% if cover %}
+            {% with img=cover %}
+              {% if not checkin or not checkout or not cant_personas %}
+                <a href="{% url 'property_detail' property.id %}">
+                  <div class=" bg-slate-100 p-4">
+                  <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full md:h-52 object-cover" loading="lazy">
+                  </div>
+                </a>
+              {% else %}
+                <a href="{% url 'property_detail' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">
+                  <div class=" bg-slate-100 p-4">
+                  <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full md:h-52 object-cover" loading="lazy">
+                  </div>
+                </a>
+              {% endif %}
+              
+            {% endwith %}
           {% else %}
-            <div class="w-full h-full grid place-items-center text-slate-400">Sin imagen</div>
+            {% with img=property.all_images.0 %}
+              <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
+                {% if img %}
+                  <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
+                {% else %}
+                  <div class="w-full h-full grid place-items-center text-slate-400">Sin imagen</div>
+                {% endif %}
+              </div>
+            {% endwith %}
+          {% endif %}
+        {% endwith %}
+        <div class="grid grid-cols-2 ">
+          <div class="flex flex-col gap-2 pl-4">
+            <a href="{% url 'property_detail' property.id %}" class="uppercase font-bold tracking-[-0.06em] ">
+              {{ property.name }}
+            </a>
+            <p class="italic"> Desde {{ property.nightly_price }} MXN</p>
+          </div>
+          {% if checkin and checkout and cant_personas %}
+              {% if property.available %}
+                <div class="pl-4 flex flex-col gap-2">
+                  <span class="text-green-600 font-medium animate-pulse">DISPONIBLE</span>
+                </div>
+              {% else %}
+                    <span class="text-red-600 font-medium">NO DISPONIBLE</span>
+              {% endif %}
           {% endif %}
         </div>
-      {% endwith %}
-    {% endif %}
-  {% endwith %}
-
-  <a href="{% url 'property_detail' property.id %}" class="uppercase font-medium tracking-[-0.06em]">
-    {{ property.name }}
-  </a>
-    {% if checkin and checkout and cant_personas %}
-        {% if property.available %}
-            <span>Disponible</span>
-            <a href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
-        {% else %}
-            <span>No Disponible</span>
-        {% endif %}
-    {% endif %}
-{%  endfor %}
+      </div>
+    {% endfor %}
+  </div>
+  
 {% endblock %}
