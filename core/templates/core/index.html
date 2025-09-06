@@ -15,7 +15,7 @@
 
 {% block content %}
   <!-- HERO con imagen de fondo -->
-  <section class="relative h-[100vh] min-h-[480px]">
+  <section class="relative min-h-[100svh] sm:min-h-[480px] grid">
     <img src="{% static 'core/img/foto-home.jpg' %}"
          alt="Hero"
          class="absolute inset-0 w-full h-full object-cover">
@@ -23,8 +23,8 @@
     <div class="absolute inset-0 bg-black/35"></div>
 
     <!-- Texto del hero -->
-    <div class="relative z-10 h-full max-w-5xl px-4 flex flex-col items-start justify-end pb-10">
-        <h1 class=" font-bold uppercase text-white tracking-[-0.04em] p-2 text-7xl">COMPRUEBA DISPONIBILIDAD</h1>
+    <div class="relative z-10 self-end px-4 pb-10 pt-16 sm:pt-24">
+        <h1 class=" font-bold uppercase text-white tracking-[-0.04em] p-2 text-4xl md:text-6xl lg:text-7xl">COMPRUEBA DISPONIBILIDAD</h1>
         <form action="{% url 'home' %}" method="post" class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl backdrop-blur md:col-start-1">
             {% csrf_token %}
             <div class="">
@@ -40,25 +40,31 @@
                 <button class="inline-flex items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">Buscar</button>
             </div>
         </form>
-        <p class="text-white pt-3">Al reservar estoy aceptando los <a class="italic underline" href="{% url 'terminos_y_condiciones' %}">Términos y Condiciones de la empresa</a></p>
+        <div class="flex items-center w-full pt-8">
+          <p class="text-white">Al reservar estoy aceptando los <a class="italic underline" href="{% url 'terminos_y_condiciones' %}">Términos y Condiciones de la empresa</a></p>
+          <div class=" w-full flex justify-end">
+            <p class="uppercase font-bold tracking-[0.06em] flex justify-end text-white">(DESLIZA)</p>
+          </div>
+          
+        </div>
     </div>  
     
   </section>
   <section class="px-4 py-24 bg-slate-100">
     <div class="flex flex-col">
-      <h2 class=" flex justify-start text-black font-bold text-7xl md:text-7xl md:max-w-16 pb-3 tracking-[-0.04em]">HOSPEDAJE DE REYES</h2>
+      <h2 class=" flex justify-start text-black font-bold text-4xl md:text-6xl lg:text-7xl md:max-w-16 pb-3 tracking-[-0.04em]">HOSPEDAJE DE REYES</h2>
       <p class="flex justify-end uppercase font-semibold text-base tracking-[-0.04em] ">(SOBRE NOSOTROS)</p>
     </div>
     <div class="mx-auto max-w-7xl px-4 flex flex-col items-center justify-center p-4">
       <img src="{% static 'core/img/foto-playa-home.jpg' %}" alt="" class="w-full md:max-w-[40%]">
-      <p class="mt-3 text-black font-medium text-xl max-w-[60%] md:max-w-[40%] tracking-[-0.04em]">Nuestro compromiso de hospedar a personas comenzo con 
+      <p class="mt-3 text-black font-medium text-md md:text-xl max-w-[60%] md:max-w-[40%] tracking-[-0.04em]">Nuestro compromiso de hospedar a personas comenzo con 
         nuestro padre cuando decidió invertir el dinero que generaba vendiendo frutas y 
         verduras en un terreno y construyendo una bodega de almacenamiento, el tiempo fue 
         pasando y con él la evolución de las bodegas pasaron de ser 1 a 3.
       </p>
-      <p class="mt-3 text-black font-medium text-xl max-w-[60%] md:max-w-[40%] tracking-[-0.04em] pt-2">
+      <p class="mt-3 text-black font-medium text-ml md:text-xl max-w-[60%] md:max-w-[40%] tracking-[-0.04em] pt-2">
         Posteriormente 
-        inicií construyendo apartamentos encima de ellos, con el paso de los años fue aumentando 
+        inició construyendo apartamentos encima de ellos, con el paso de los años fue aumentando 
         el número de apartamentos y de casas. Muchas cosas cambiaron desde aquellos años, pero lo que nunca cambiará es
         el compromiso familiar y de trabajadores para ofrecer el mejor servicio y que nuestros clientes se sientan como en casa.
       </p>
@@ -77,12 +83,6 @@
       </p>
     </div>
   </section>
-  {% comment %} <section class="relative h-[100vh] min-h-[480px]">
-    <div>
-        <h1>POPIEDADES ÚNICAS</h1>
-        
-    </div>
-  </section> {% endcomment %}
 {% endblock %}
 {% block body_extra %}
     <script>
