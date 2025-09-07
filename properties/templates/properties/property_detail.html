@@ -1,81 +1,179 @@
 {% extends "core/base.html" %}
 {% load static %}
+{% block head_extra  %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+  <!-- Carrusel + Lightbox -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glider-js@1/glider.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+{% endblock  %}
+
     {# Navbar encima de la imagen #}
 {% block nav_position %}absolute inset-x-0 top-0 z-50{% endblock %}
 {% block nav_colors %}bg-transparent text-white{% endblock %}
-{% block menu_btn_variant %}bg-white/10 text-white ring-1 ring-white/60 backdrop-blur hover:bg-white/20{% endblock %}
+{% block menu_btn_variant %}text-white{% endblock %}
 {% block content %}
   <!-- HERO con imagen de fondo -->
-  <section class="relative h-[100vh] min-h-[480px]">
-    {% with cover=property.cover_list.0 %}
-        {% if cover %}
-            {% with img=cover %}
-              <a href="{% url 'property_detail' property.id %}">
-                <div class=" bg-slate-100 p-4">
-                <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="absolute inset-0 w-full h-full object-cover" loading="lazy">
+    <section class="relative min-h-[100svh] sm:min-h-[480px] pt-20 pb-8 md:pb-12 pr-4">
+        {% with cover=property.cover_list.0 %}
+            {% if cover %}
+                {% with img=cover %}
+                <a href="{% url 'property_detail' property.id %}">
+                    <div class=" bg-slate-100 p-4">
+                    <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="absolute inset-0 w-full h-full object-cover" loading="lazy">
+                    </div>
+                </a>
+                
+                {% endwith %}
+            {% else %}
+                {% with img=property.all_images.0 %}
+                <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
+                    {% if img %}
+                    <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
+                    {% else %}
+                    <div class="w-full h-full grid place-items-center text-slate-400">Sin imagen</div>
+                    {% endif %}
                 </div>
-              </a>
-              
-            {% endwith %}
-        {% else %}
-            {% with img=property.all_images.0 %}
-            <div class="aspect-[4/3] bg-slate-100 overflow-hidden rounded-2xl">
-                {% if img %}
-                <img src="{{ img.image.url }}" alt="Foto de {{ property.name }}" class="w-full h-full object-cover" loading="lazy">
-                {% else %}
-                <div class="w-full h-full grid place-items-center text-slate-400">Sin imagen</div>
-                {% endif %}
-            </div>
-            {% endwith %}
-        {% endif %}
-    {% endwith %}
-    <!-- Oscurecedor para legibilidad -->
-    <div class="absolute inset-0 bg-black/55"></div>
-    <div class="relative z-10 h-full max-w-5xl flex flex-col items-start justify-center pb-10 text-white gap-6 pl-4 md:pl-24">
-        <h1 class=" text-3xl md:text-7xl uppercase tracking-[-0.06em] mb-28 ">{{property.name}}</h1>
-            <p class="text-2xl tracking-[-0.06em]">{{property.description}}</p>
-            <div class="font-bold uppercase flex">
-                <p class="max-w-96 justify-start tracking-[-0.06em]">{{property.address}}</p>
-                <p class="ml-20 md:ml-96">CAPACIDAD | {{property.max_people}}</p>
-            </div>
-            {% if checkin and checkout and cant_personas %}
-                {% if active_booking and deposit_payment %}
-                    {% if deposit_payment.status == "requires_action" or deposit_payment.status == "failed" %}
-                        <p>Hubo un problema con el pago del depósito</p>
+                {% endwith %}
+            {% endif %}
+        {% endwith %}
+        <!-- Oscurecedor para legibilidad -->
+        <div class="absolute inset-0 bg-black/55"></div>
+        <!-- Contenido -->
+        <div class="relative z-10 w-full flex flex-col items-start justify-center pb-10 text-white gap-6 pl-4 md:pl-24">
+            <h1 class="text-xl md:text-7xl uppercase tracking-[-0.06em] mb-8 md-28">{{property.name}}</h1>
+                <p class="text-md  tracking-[-0.06em]">{{property.description}}</p>
+                <div class="font-bold uppercase flex text-md md:text-xl">
+                    <p class="max-w-96 justify-start tracking-[-0.06em]">{{property.address}}</p>
+                    <p class="ml-20 md:ml-96">CAPACIDAD | {{property.max_people}}</p>
+                </div>
+                {% if checkin and checkout and cant_personas %}
+                    {% if active_booking and deposit_payment %}
+                        <p>Ya tienes una reserva para esta propiedad.</p>
                         <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
-                    {% elif deposit_payment.status == "paid" %}
-                        <p>Pago del depósito exitoso</p>
-                        <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+                    {% elif available %}
+                        <div class="flex flex-col text-xl gap-6">
+                            <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
+                            <a class="animate-bounce italic" href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+                        </div>
+                    {% else %}
+                        <p class="text-zinc-100 font-semibold uppercase text-md md:text-xl">Propiedad no disponible para las fechas seleccionadas</p>
+                        <a href="{% url 'property_detail' property.id %}" class="italic animate-bounce text-xl md:text-2xl">Modificar fechas</a>
                     {% endif %}
                 {% else %}
-                    <div class="flex flex-col text-xl gap-6">
-                        <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
-                        <a class="animate-bounce italic" href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+                    {% if active_booking and deposit_payment %}
+                        <p>Ya tienes una reserva para esta propiedad.</p>
+                        <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
+                    {% else %}
+                    <div class="flex flex-col gap-3 w-full">
+                        <h2 class="text-xl md:text-2xl uppercase tracking-[-0.06em]">Selecciona fechas para comprobar disponibilidad</h2>
+                        <form method="post" class=" md:max-w-[70%] grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl backdrop-blur md:col-start-1 text-black">
+                            {% csrf_token %}
+                            <div class="">
+                                {{ form.checkin }}
+                            </div>
+                            <div class="class">
+                                {{ form.checkout }}
+                            </div>
+                            <div class="class">
+                                {{ form.cant_personas }}
+                            </div>
+                            <div class="flex justify-end">
+                                <button class="inline-flex items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">Comprobar</button>
+                            </div>
+                        </form>
+                        <div class="flex items-center justify-center">
+                            <img class="max-w-20 max-h-22 " src="{% static 'properties/img/white-arrow-down.svg' %}" alt="arrow-down">
+                        </div>
                     </div>
+                    {% endif %}
                 {% endif %}
-                    </div>
-            {% elif active_booking and deposit_payment %}
-                <p>Hay una reserva en curso.</p>
-                <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
-            {% else %}
-                <h3>Selecciona fechas para comprobar disponibilidad</h3>
-                <form method="post" class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl backdrop-blur md:col-start-1">
-                {% csrf_token %}
-                <div class="">
-                    {{ form.checkin }}
-                </div>
-                <div class="class">
-                    {{ form.checkout }}
-                </div>
-                <div class="class">
-                    {{ form.cant_personas }}
-                </div>
-                <div class="flex justify-end">
-                    <button class="inline-flex items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">Comprobar</button>
-                </div>
-            </form>
-            {% endif %}
+            </div>
         </div>
-    </div>
     </section>
+    <section class="px-4 md:px-8 py-10">
+        <h2 class="mb-6 text-2xl md:text-3xl font-semibold tracking-tight">Galería</h2>
+
+        {% with cover=property.cover_list.0 %}
+        <div class="mx-auto max-w-6xl
+            grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4
+            md:[grid-auto-flow:dense]">
+            {% for img in property.all_images %}
+            {% if cover and img.id == cover.id %}
+                {# saltar portada #}
+            {% else %}
+                {# cada 5ª imagen ocupa 2 columnas en desktop para variar el ritmo #}
+                <a href="{{ img.image.url }}"
+                class="group {% if forloop.counter|divisibleby:'5' %} md:col-span-2 {% endif %} glightbox glightbox-p{{ property.id }}"
+                data-gallery="prop-{{ property.id }}"
+                aria-label="Ampliar imagen">
+                <figure class="overflow-hidden rounded-2xl bg-slate-200">
+                    {# Alturas coherentes: menos gigantes en desktop #}
+                    <img src="{{ img.image.url }}"
+                        alt="Foto de {{ property.name }}"
+                        class="w-full h-[260px] md:h-[360px] {% if forloop.counter|divisibleby:'5' %} md:h-[460px] {% endif %} object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                        loading="lazy">
+                </figure>
+                </a>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endwith %}
+    </section>
+
+
+{% endblock %}
+{% block body_extra %}
+    <script>
+    // Utilidades de fecha
+    const addDays = (d, n) => {
+        const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        x.setDate(x.getDate() + n);
+        return x;
+    };
+    const fmt = d => d.toISOString().slice(0,10); // YYYY-MM-DD
+
+    const $in  = document.getElementById("id_checkin");
+    const $out = document.getElementById("id_checkout");
+
+    // Flatpickr en español
+    const fpIn = flatpickr($in, {
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        locale: "es",
+        onChange: function(selectedDates) {
+        if (!selectedDates.length) return;
+        const checkin = selectedDates[0];
+        const minOut = addDays(checkin, 2); // mínimo 2 noches
+        fpOut.set("minDate", minOut);
+
+        // Si checkout vacío o menor que minOut, lo auto-ajustamos
+        const currentOut = fpOut.selectedDates[0];
+        if (!currentOut || currentOut < minOut) {
+            fpOut.setDate(minOut, true); // true = dispara onChange
+        }
+        },
+    });
+
+    const fpOut = flatpickr($out, {
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        locale: "es",
+    });
+    </script>
+
+    {% comment %} Lightbox {% endcomment %}
+    {{ block.super }}
+    <script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+    <script>
+        // Un lightbox por propiedad (agrupado por data-gallery)
+        GLightbox({
+        selector: '.glightbox-p{{ property.id }}',
+        touchNavigation: true,
+        loop: true,
+        closeButton: true,     // botón “X” visible
+        slideEffect: 'fade',   // suave
+        });
+    </script>
 {% endblock %}

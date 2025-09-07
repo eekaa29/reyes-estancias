@@ -58,7 +58,7 @@
               <li><a class="block px-3 py-2 rounded-lg hover:bg-slate-100" href="{% url 'login' %}">Iniciar Sesión</a></li>
             {% else %}
               <li>
-                <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
+                <form id="logout-form" method="post" action="{% url 'logout' %}">
                   {% csrf_token %}
                   <button type="submit" class="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">
                     Cerrar sesión

@@ -123,7 +123,8 @@ class StartCheckoutView(LoginRequiredMixin, View):
         cancel_url = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
 
         desc = (
-            f"Reserva {prop.name} · {checkin} → {checkout} · {booking.person_num} persona(s) · "
+            f"Reserva {prop.name} · {checkin} => {checkout} · {booking.person_num} persona(s) · "
+            f"Limpieza $100 MXN => Balance · ${balance} MXN · "
             f"Total ${total} MXN · Anticipo 30%"
         )
 
@@ -204,9 +205,7 @@ def stripe_webhook(request):
     etype = event.get("type")
     obj = event["data"]["object"]
 
-    print("DEBUGG=> LLEGAS AQUI? X1")
     if etype == "checkout.session.completed":
-        print("DEBUGG=> LLEGAS AQUI? X2")
         session = obj
         booking_id = session.get("metadata", {}).get("booking_id")
         payment_id = session.get("metadata", {}).get("payment_id")
@@ -219,7 +218,6 @@ def stripe_webhook(request):
         
         pi = stripe.PaymentIntent.retrieve(pi_id, expand=["payment_method"])
 
-        print("DEBUGG=> LLEGAS AQUI? X3")
         
         customer_id = pi.get("customer")
         payment_method_id = (
@@ -230,7 +228,6 @@ def stripe_webhook(request):
         with transaction.atomic():
             booking = Booking.objects.get(pk=booking_id)
             payment = Payment.objects.get(pk=payment_id, booking=booking)
-            print("DEBUGG=> LLEGAS AQUI? X4")
 
             # Actualiza estados y guarda credenciales para el 70%
             if payment.status != "paid":

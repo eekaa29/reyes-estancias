@@ -1,7 +1,7 @@
 {% extends 'core/base.html' %}
 {% load static %}
 {% block head_extra  %}
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
 {% endblock  %}
@@ -15,7 +15,7 @@
 
 {% block content %}
   <!-- HERO con imagen de fondo -->
-  <section class="relative min-h-[100svh] sm:min-h-[480px] grid">
+  <section class="relative h-[100svh] sm:min-h-[480px] grid">
     <img src="{% static 'core/img/foto-home.jpg' %}"
          alt="Hero"
          class="absolute inset-0 w-full h-full object-cover">
@@ -25,7 +25,7 @@
     <!-- Texto del hero -->
     <div class="relative z-10 self-end px-4 pb-10 pt-16 sm:pt-24">
         <h1 class=" font-bold uppercase text-white tracking-[-0.04em] p-2 text-4xl md:text-6xl lg:text-7xl">COMPRUEBA DISPONIBILIDAD</h1>
-        <form action="{% url 'home' %}" method="post" class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl backdrop-blur md:col-start-1">
+        <form action="{% url 'home' %}" method="post" class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl backdrop-blur md:col-start-1 md:max-w-[70%]">
             {% csrf_token %}
             <div class="">
                 {{ form.checkin }}

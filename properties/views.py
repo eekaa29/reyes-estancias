@@ -7,6 +7,8 @@ from .models import Property, PropertyImage
 from .forms import BookingForm
 from bookings.models import Booking
 from django.db.models import Prefetch
+from core.tzutils import compose_aware_dt 
+from django.utils import timezone
 # Create your views here.
 
 class PropertiesList(ListView):
@@ -33,24 +35,68 @@ class PropertiesList(ListView):
         )
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        ctx = super().get_context_data(**kwargs)
         checkin = self.request.GET.get("checkin")
         checkout = self.request.GET.get("checkout")
         cant_personas = self.request.GET.get("cant_personas")
+        ctx.update(checkin=checkin, checkout=checkout, cant_personas=cant_personas)
 
-        context["checkin"] = checkin
-        context["checkout"] = checkout
-        context["cant_personas"] = cant_personas
+        props = list(ctx["property_list"])
 
+        # Disponibilidad como ya hacías
         if checkin and checkout and cant_personas:
-            for prop in context["property_list"]:
-                prop.available = prop.is_available(checkin, checkout, cant_personas)
+            for p in props:
+                p.available = p.is_available(checkin, checkout, cant_personas)
         else:
-            for prop in context["property_list"]:
-                prop.available = None
+            for p in props:
+                p.available = None
 
-        return context 
+        # Flags por usuario
+        user = self.request.user
+        for p in props:
+            p.user_booking_overlap = False
+            p.user_has_other_booking = False
+            p.user_has_future_booking = False
 
+        if user.is_authenticated and props:
+            prop_ids = [p.id for p in props]
+            now = timezone.now()
+
+            # Solo confirmed
+            ub = list(
+                Booking.objects
+                .filter(user=user, property_id__in=prop_ids, status="confirmed")
+                .only("property_id", "arrival", "departure")
+            )
+
+            if checkin and checkout:
+                sel_in = compose_aware_dt(checkin, hour=15, minute=0)
+                sel_out = compose_aware_dt(checkout, hour=12, minute=0)
+
+                # Marca solape u “otra reserva futura”
+                for b in ub:
+                    if (b.arrival < sel_out) and (b.departure > sel_in):
+                        # solapa con el rango
+                        for p in props:
+                            if p.id == b.property_id:
+                                p.user_booking_overlap = True
+                                break
+                    elif b.departure >= now:
+                        # es futura pero no solapa
+                        for p in props:
+                            if p.id == b.property_id:
+                                p.user_has_other_booking = True
+                                break
+            else:
+                # Sin rango: solo “reserva futura”
+                for b in ub:
+                    if b.departure >= now:
+                        for p in props:
+                            if p.id == b.property_id:
+                                p.user_has_future_booking = True
+                                break
+
+        return ctx
 class PropertyDetail(DetailView):
     model = Property
     template_name = "properties/property_detail.html"
@@ -108,8 +154,6 @@ class PropertyDetail(DetailView):
                 context["active_booking"] = booking
                 deposit = (booking.payments.filter(payment_type="deposit").order_by("-id").first())
                 context["deposit_payment"] = deposit
-                return context
-            
 
         #Caso 1- Viene del botón "Reservar ahora"
         if checkin and checkout and cant_personas:

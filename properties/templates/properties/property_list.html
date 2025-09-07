@@ -5,7 +5,7 @@
   <h1 class="mt-14 mb-14 uppercase font-bold tracking-[-0.06em] text-5xl md:text-7xl pl-4">PROPIEDADES</h1>
   <div class="grid grid-cols-1 md:grid-cols-4 gap-3 px-3">
     {% for property in property_list %}
-      <div class="flex flex-col bg-slate-100 p-2 rounded-xl border-4 border-slate-200 shadow-xl md:max-w-96 md:max-h-96 md:gap-1 mb-10 ml-5 mr-5 mt-5trasition delay-50 duration-200 ease-in-out hover:translate-y-1 hover:scale-105 md:hover-scale-110">
+      <div class="flex flex-col bg-slate-100 p-2 rounded-xl border-4 border-slate-200 shadow-xl md:max-w-96 md:max-h-96 md:gap-1 mb-10 ml-5 mr-5 mt-5trasition duration-200 ease-in-out hover:translate-y-1 hover:scale-105 md:hover-scale-110 md:hover-translate-y-2">
         {% with cover=property.cover_list.0 %}
           {% if cover %}
             {% with img=cover %}
@@ -44,14 +44,23 @@
             <p class="italic"> Desde {{ property.nightly_price }} MXN</p>
           </div>
           {% if checkin and checkout and cant_personas %}
-              {% if property.available %}
-                <div class="pl-4 flex flex-col gap-2">
-                  <span class="text-green-600 font-medium animate-pulse">DISPONIBLE</span>
-                </div>
+            {% if property.user_booking_overlap %}
+              <span class="text-blue-600 font-semibold animate-pulse tracking-[-0.06em]">RESERVA REALIZADA</span>
+            {% else %}
+              {% if property.user_has_other_booking %}
+                <span class="text-amber-600 font-semibold animate-pulse tracking-[-0.06em]">Tienes otra reserva en esta propiedad</span>
+              {% elif property.available %}
+                <span class="text-green-600 font-semibold animate-pulse tracking-[-0.06em]">DISPONIBLE</span>
               {% else %}
-                    <span class="text-red-600 font-medium">NO DISPONIBLE</span>
+                  <span class="text-red-600 font-semibold animate-pulse tracking-[-0.06em]">NO DISPONIBLE</span>
               {% endif %}
+            {% endif %}
+          {% else %}
+            {% if request.user.is_authenticated and property.user_has_future_booking %}
+              <span class="text-blue-600 font-semibold animate-pulse tracking-[-0.06em] uppercase">Tienes una reserva futura</span>
+            {% endif %}
           {% endif %}
+
         </div>
       </div>
     {% endfor %}
