@@ -1,13 +1,96 @@
+
 {% extends "core/base.html" %}
+{% comment %} <div class="sm:min-h-[480px]">
+        <h1>Modificar fechas:</h1>
+        <h3>Compruebe disponibilidad.</h3>
+        <form action="{% url 'booking_change_dates_preview' pk=booking.id %}" method="post">
+            {% csrf_token %}
+            {{form.as_p}}
+            <button type="submit">Aplicar cambio</button>
+        </form>
+        <a href="{% url 'bookings_list' %}">Volver</a>
+    </div> {% endcomment %}
 {% load static %}
-{% block title %}Mis Reservas{% endblock %}
+
+{% block title %}Modificar fechas{% endblock %}
+
+{% block head_extra %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+{% endblock %}
+
 {% block content %}
-    <h1>Modificar fechas:</h1>
-    <h3>Compruebe disponibilidad.</h3>
-    <form action="{% url 'booking_change_dates_preview' pk=booking.id %}" method="post">
-        {% csrf_token %}
-        {{form.as_p}}
-        <button type="submit">Aplicar cambio</button>
+  <div class="sm:min-h-[480px] px-4">
+    <h1 class="uppercase text-2xl md:text-4xl font-semibold tracking-[-0.06em] mb-2">Modificar fechas</h1>
+    <p class="text-slate-600 mb-6">Comprueba disponibilidad.</p>
+
+    <form action="{% url 'booking_change_dates_preview' pk=booking.id %}" method="post"
+          class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl ring-1 ring-slate-200 max-w-3xl">
+      {% csrf_token %}
+
+      <div class="sm:col-span-1">
+        {{ form.checkin }}
+      </div>
+      <div class="sm:col-span-1">
+        {{ form.checkout }}
+      </div>
+      <div class="sm:col-span-2 flex sm:justify-end">
+        <button type="submit"
+                class="inline-flex items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">
+          Aplicar cambio
+        </button>
+      </div>
     </form>
-    <a href="{% url 'bookings_list' %}">Volver</a>
+
+    <div class="mt-4">
+      <a class="underline" href="{% url 'bookings_list' %}">Volver</a>
+    </div>
+  </div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+  // utilidades
+  const addDays = (d, n) => {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    x.setDate(x.getDate() + n);
+    return x;
+  };
+
+  // IDs generados por Django para estos campos: id_checkin / id_checkout
+  const $in  = document.getElementById("id_checkin");
+  const $out = document.getElementById("id_checkout");
+
+  // lee valores iniciales si vienen del server (se rellenan con "initial")
+  const initialIn  = $in.value ? new Date($in.value) : null;
+  const initialOut = $out.value ? new Date($out.value) : null;
+
+  // Flatpickr en español
+  const fpIn = flatpickr($in, {
+    dateFormat: "Y-m-d",
+    minDate: "today",
+    defaultDate: initialIn || null,
+    locale: "es",
+    onChange: function(selectedDates) {
+      if (!selectedDates.length) return;
+      const ci = selectedDates[0];
+      const minOut = addDays(ci, 2); // mínimo 2 noches
+      fpOut.set("minDate", minOut);
+
+      // si checkout vacío o menor que minOut, lo ajustamos
+      const co = fpOut.selectedDates[0];
+      if (!co || co < minOut) {
+        fpOut.setDate(minOut, true);
+      }
+    },
+  });
+
+  const fpOut = flatpickr($out, {
+    dateFormat: "Y-m-d",
+    minDate: initialIn ? addDays(initialIn, 2) : "today",
+    defaultDate: initialOut || null,
+    locale: "es",
+  });
+</script>
 {% endblock %}

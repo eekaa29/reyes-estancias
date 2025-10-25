@@ -5,6 +5,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %} Reyes Estancias {% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+    <script type="module">
+      import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+
+      createChat({
+        webhookUrl: 'https://ekaitz29.app.n8n.cloud/webhook/eb16e85a-6685-4b12-b9c2-002477a1feae/chat',
+        initialMessages: [
+          'Hola! 👋',
+          'Soy tu asistente personal en Reyes Estancias, en qué puedo ayudarte?'
+        ],
+      });
+    </script>
     {% load static %} {% tailwind_css %}
     {% block head_extra  %}{% endblock  %}
   </head>
@@ -51,7 +63,6 @@
                     ring-1 ring-slate-200 p-2 z-50">
           <ul class="space-y-1 text-sm font-medium text-slate-800">
             <li><a class="block px-3 py-2 rounded-lg hover:bg-slate-100" href="{% url 'property_list' %}">Propiedades</a></li>
-            <li><a class="block px-3 py-2 rounded-lg hover:bg-slate-100" href="{% url 'about_us' %}">Sobre Nosotros</a></li>
             <li><a class="block px-3 py-2 rounded-lg hover:bg-slate-100" href="{% url 'bookings_list' %}">Mis Reservas</a></li>
 
             {% if not request.user.is_authenticated %}
@@ -64,6 +75,9 @@
                     Cerrar sesión
                   </button>
                 </form>
+              </li>
+              <li>
+                <a class="block px-3 py-2 rounded-lg hover:bg-slate-100" href="{% url 'password_change' %}">Cambiar contraseña</a>
               </li>
             {% endif %}
 
@@ -109,6 +123,9 @@
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
+    {% block chatbot %}
+      
+    {% endblock chatbot %}
     <hr class="border-gray-300 border-0.1">
     <footer class="grid grid-cols-1 sm:grid-cols-2 gap-4 m-3">
       <div class="font-semibold tracking-[-0.04em] space-y-1">

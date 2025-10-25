@@ -27,9 +27,10 @@ module.exports = {
         "../../core/templates/**/*.html",
         "../../bookings/templates/**/*.html",
         "../../properties/templates/**/*.html",
-        "../../properties/templates/**/*.html",
         "../../payments/templates/**/*.html",
-        "../../payments/templates/**/*.html",
+        "../../registration/templates/**/*.html",
+        "./**/*.py",
+        "./static/src/**/*.js",
 
         /**
          * JS: If you use Tailwind CSS in JavaScript, uncomment the following lines and make sure

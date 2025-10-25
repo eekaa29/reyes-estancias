@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'accounts',
     'properties',
     'bookings',
     'payments',
@@ -196,3 +197,6 @@ CELERY_RESULT_SERIALIZER = "json"
 # CELERY TESTS
 SITE_BASE_URL = "http://127.0.0.1:8000"
 CELERY_TASK_EAGER_PROPAGATES = True    # si falla, revienta el test
+
+#ACCOUNTS APP
+AUTH_USER_MODEL = "accounts.User"

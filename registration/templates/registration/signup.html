@@ -2,10 +2,29 @@
 {% load static %}
 {% block title %}Login{% endblock %}
 {% block content %}
-    <form action="" method="post">{% csrf_token %}
-        <h1>Registro</h1>
-        {{form.as_p}}
-        <input type="submit" value="Acceder">
-    </form>
+    <div class="mx-auto md:max-w-96 border-4 border bg-white rounded-xl p-4 mb-8">
+        <h1 class="pl-4 text-xl md:text-3xl uppercase tracking-[-0.06em] text-center">Registro</h1>
+        <form method="post" class="flex flex-col gap-3 p-4">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <p class="rounded-lg bg-rose-50 p-2 text-sm text-rose-700">
+                {{ form.non_field_errors|striptags }}
+                </p>
+            {% endif %}
+
+            {% for field in form %}
+                <label class="text-sm font-medium" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<p class="text-xs text-neutral-500">{{ field.help_text }}</p>{% endif %}
+                {% if field.errors %}<p class="text-xs text-rose-600">{{ field.errors|striptags }}</p>{% endif %}
+            {% endfor %}
+
+            <button class="mt-2 inline-flex items-center justify-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">
+                Crear cuenta
+            </button>
+        </form>
+        <a class="underline" href="{% url 'login' %}">Volver</a>
+    </div>
+    
     
 {% endblock %}

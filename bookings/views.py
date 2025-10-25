@@ -265,12 +265,13 @@ class BookingChangeDatesPreviewView(LoginRequiredMixin, View):
 
         if booking.user != self.request.user and not self.request.user.is_staff:
             messages.error(request, "Usuario no autorizado")
+            return redirect("home")
         
         form = ChangeDatesForm(request.POST)
 
         if not form.is_valid():
             messages.error(request, "El formulario no es válido")
-            return render(request, "change_dates_form.html", {"booking":booking, "form":form})
+            return render(request, "bookings/change_dates_form.html", {"booking": booking, "form": form})
         
         new_in = compose_aware_dt(form.cleaned_data["checkin"], 15, 0,)
         new_out = compose_aware_dt(form.cleaned_data["checkout"], 12, 0)
@@ -279,7 +280,8 @@ class BookingChangeDatesPreviewView(LoginRequiredMixin, View):
 
         if not q["ok"]:
             messages.error(request, "Propiedad no disponible en estas fechas")
-            return redirect("change_dates_form.html", {"booking":booking, "form":form})
+            return redirect("booking_change_dates_start", pk=booking.id)
+            #return redirect("change_dates_form.html", {"booking":booking, "form":form})
 
         ctx = {"booking": booking, "form":form, "quote":q, "checkin":form.cleaned_data["checkin"], "checkout": form.cleaned_data["checkout"]} 
         return render(request, "bookings/change_dates_preview.html", ctx)

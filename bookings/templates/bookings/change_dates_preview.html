@@ -3,22 +3,33 @@
 {% block title %}Mis Reservas{%endblock %} 
 
 {% block content %}
-<h3>Detalles de la nueva reserva</h3>
-<p>Nuevo checkin: {{checkin}}</p>
-<p>Nuevo checkout: {{checkout}}</p>
-<p>Nuevo depósito: {{quote.deposit_target}} MXN</p>
-{% if quote.dep_topup and quote.dep_topup > 0 %}
-<p>Extra a pagar: {{quote.dep_topup}} MXN</p>
-{% elif quote.dep_refund and quote.dep_refund > 0 %}
-<p>A reembolsar: {{quote.dep_refund}} MXN</p>
-{% endif %}
-<p>Nuevo balance: {{quote.balance_next}} MXN</p>
-<p>Precio total: {{quote.T_new}} MXN</p>
-<form action="{% url 'booking_change_dates_apply' pk=booking.id %}" method="post">
-    {% csrf_token %}
-    <input type="hidden" name="checkin" value="{{ checkin|date:'Y-m-d' }}">
-    <input type="hidden" name="checkout" value="{{ checkout|date:'Y-m-d' }}">
-    <button type="submit">Confirmar</button>
-</form>
-<a href="{% url 'booking_change_dates_start' pk=booking.id %}">Editar fechas</a>
+<div class="sm:min-h-[480px] px-4">
+    <h3 class="uppercase text-2xl md:text-4xl font-semibold tracking-[-0.06em] mb-4 flex justify-center">Detalles de la nueva reserva</h3>
+    <div class="m-4">
+        <p><span class="font-bold">Nuevo checkin</span> {{checkin}}</p>
+        <p><span class="font-bold">Nuevo checkout</span> {{checkout}}</p>
+    </div>
+    <div class="m-4">
+        <p><span class="font-bold">Nuevo depósito</span> {{quote.deposit_target}} MXN</p>
+        {% if quote.dep_topup and quote.dep_topup > 0 %}
+        <p><span class="font-bold">Extra a pagar</span> {{quote.dep_topup}} MXN</p>
+        {% elif quote.dep_refund and quote.dep_refund > 0 %}
+        <p><span class="font-bold">A reembolsar</span> {{quote.dep_refund}} MXN</p>
+        {% endif %}
+        <p><span class="font-bold">Nuevo balance</span> {{quote.balance_next}} MXN</p>
+        <div class="mt-4">
+            <p><span class="font-bold">Precio total</span> {{quote.T_new}} MXN</p>
+        </div>
+    </div>
+    <div class="flex gap-4 m-4">
+        <form form action="{% url 'booking_change_dates_apply' pk=booking.id %}" method="post" class="inline-flex justify-center items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90">
+            {% csrf_token %}
+            <input type="hidden" name="checkin" value="{{ checkin|date:'Y-m-d' }}">
+            <input type="hidden" name="checkout" value="{{ checkout|date:'Y-m-d' }}">
+            <button type="submit">Confirmar</button>
+        </form>
+        <a class="inline-flex justify-center items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90" href="{% url 'booking_change_dates_start' pk=booking.id %}">Editar fechas</a>
+    </div>
+</div>
+
 {% endblock %}

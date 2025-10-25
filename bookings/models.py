@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from properties.models import Property
 from decimal import Decimal
 from django.db.models import Sum
+from reyes_estancias import settings
 
 # Create your models here.
 
@@ -13,7 +14,7 @@ class Booking(models.Model):
     ("cancelled", "Cancelado"),
     ("expired", "Expirada")
     ]
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="bookings")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="Usuario")
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="bookings")
     person_num = models.IntegerField(verbose_name="Cant.Personas")
     arrival = models.DateTimeField(verbose_name="LLegada")
@@ -76,7 +77,7 @@ class BookingChangeLog(models.Model):
     ]
 
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="change_logs", verbose_name="Reserva modificada")
-    actor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Usuario")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, verbose_name="Usuario", null=True, blank=True)
     
     old_arrival = models.DateTimeField(verbose_name="Llegada antigua")
     old_departure = models.DateTimeField(verbose_name="Salida antigua")
