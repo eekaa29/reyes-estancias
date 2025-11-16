@@ -19,6 +19,7 @@ class Property (models.Model):
     address = models.CharField(max_length= 200, verbose_name="Localización")
     latitude = models.FloatField(blank=True, null= True, verbose_name="Latitud")
     longitude = models.FloatField(blank=True, null= True, verbose_name="Altitud")
+    airbnb_ical_url = models.URLField("Calendario iCal de Airbnb", blank=True, null=True)
 
     def is_available(self, checkin, checkout, cant_personas, *, exclude_booking_id=None, buffer_nights=0):
         qs = self.bookings.filter(status__in=["confirmed", "pending"])
@@ -107,6 +108,23 @@ class Property (models.Model):
         info["total"]= total
         
         return info
+    
+    def get_blocked_ranges(self):
+        """
+            Devuelve una lista de tuplas (start_date, end_date) con las fechas bloqueadas
+            según el calendario iCal de Airbnb.
+        """
+        from properties.utils.ical import get_blocked_dates
+
+        if not self.airbnb_ical_url:
+            return []
+        
+        try:
+            return get_blocked_dates(self.airbnb_ical_url)
+        except Exception as e:
+            # Puedes loguearlo o ignorarlo si prefieres
+            print(f"[get_blocked_ranges] Error al obtener bloqueos para '{self.name}': {e}")
+            return []
 
         
 

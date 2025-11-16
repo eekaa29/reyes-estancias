@@ -45,9 +45,10 @@ class PropertyImageInline(admin.TabularInline):
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
-    list_display = ("name", "max_people", "nightly_price")
+    list_display = ("name", "max_people", "nightly_price", "airbnb_ical_url")
     inlines = [PropertyImageInline]
     change_form_template = "admin/properties/property/change_form.html"
+    search_fields = ("name", )
 
     def get_urls(self):
         urls = super().get_urls()

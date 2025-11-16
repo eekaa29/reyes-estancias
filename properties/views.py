@@ -9,6 +9,8 @@ from bookings.models import Booking
 from django.db.models import Prefetch
 from core.tzutils import compose_aware_dt 
 from django.utils import timezone
+from datetime import date, timedelta
+from properties.utils.ical import fetch_ical_bookings
 # Create your views here.
 
 class PropertiesList(ListView):
@@ -164,6 +166,26 @@ class PropertyDetail(DetailView):
             #Caso 2- No ha completado el form del home, mostramos el form
             context["available"] = None
             context["form"] = BookingForm()
+
+        #Config para el calendario sincronizado
+        if self.object.airbnb_ical_url:
+            try:
+                blocked_ranges = fetch_ical_bookings(self.object.airbnb_ical_url)
+                # Expandir a días individuales
+                blocked_dates = []
+                for start, end in blocked_ranges:
+                    current = start
+                    while current < end:
+                        blocked_dates.append(current.isoformat())
+                        current += timedelta(days=1)
+                context["blocked_dates"] = blocked_dates
+                context["booked_ranges"] = [
+                    f"{start.toordinal()}_{end.toordinal()}" for start, end in blocked_ranges
+                ]
+            except Exception as e:
+                context["blocked_dates"] = []
+                context["booked_ranges"] = []
+
         return context
     
     #El usuario completa el formulario:
