@@ -59,6 +59,17 @@ class Payment(models.Model):
     class Meta():
         verbose_name = "Pago"
         verbose_name_plural = "Pagos"
+        indexes = [
+            # Índice para buscar pagos por booking y tipo
+            models.Index(fields=['booking', 'payment_type', 'status'], name='payment_lookup_idx'),
+            # Índice para callbacks de Stripe
+            models.Index(fields=['stripe_payment_intent_id'], name='payment_stripe_pi_idx'),
+            models.Index(fields=['stripe_checkout_session_id'], name='payment_stripe_cs_idx'),
+            # Índice para búsquedas por estado
+            models.Index(fields=['status', 'created_at'], name='payment_status_idx'),
+            # Índice para pagos que expiran
+            models.Index(fields=['status', 'expires_at'], name='payment_expires_idx'),
+        ]
 
     def __str__(self):
         return f"Pago de {self.booking.user.username} => {self.booking.property.name} - {self.status}"

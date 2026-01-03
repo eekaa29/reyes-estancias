@@ -19,6 +19,10 @@ from .services import *
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.db.models import OuterRef, Subquery
 from .models import Booking, BookingChangeLog
+from django.db import transaction
+import logging
+
+logger = logging.getLogger(__name__)
 #from core.tzutils import compose_aware_dt 
 # Create your views here.
 
@@ -41,56 +45,98 @@ class CreateBookingView(LoginRequiredMixin, View):
     login_url = "login"
 
     def get(self, request, property_id):
-        property = get_object_or_404(Property, pk=property_id)
         checkin = request.GET.get("checkin")
         checkout = request.GET.get("checkout")
         cant_personas = request.GET.get("cant_personas")
 
         if not (checkin and checkout and cant_personas):
-            messages.warning("Elija fechas y cantidad de personas")
+            messages.warning(request, "Elija fechas y cantidad de personas")
             return redirect("property_detail", pk=property_id)
-        
-        if not property.is_available(checkin, checkout, cant_personas):
-            messages.warning(request, "La propiedad ya no está disponible")
-            url = f"{reverse("property_detail", kwargs={"pk":property_id})}?checkin={checkin}&checkout={checkout}&cant_personas={cant_personas}"
-            return redirect(url)
-        
-        checkin = compose_aware_dt(checkin, hour=15, minute=0)
-        checkout = compose_aware_dt(checkout, hour=12, minute=0)
 
-        quote = property.quote_total(checkin.date(), checkout.date())
-        total   = quote["total"]
-        deposit = (quote["total"] * Decimal("0.30")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        balance = (quote["total"] - deposit).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        # Parsear fechas antes de la transacción
+        try:
+            checkin_dt = compose_aware_dt(checkin, hour=15, minute=0)
+            checkout_dt = compose_aware_dt(checkout, hour=12, minute=0)
+        except Exception:
+            messages.error(request, "Fechas inválidas")
+            return redirect("property_detail", pk=property_id)
 
-        
-        booking, created = Booking.objects.get_or_create(
-            user=request.user,
-            property=property,
-            arrival=checkin,
-            departure=checkout,
-            defaults={
-                "person_num": int(cant_personas),
-                "total_amount": total,
-                "deposit_amount": deposit,
-                "balance_due": balance,
-                "status": "pending",
-            },
-        )
-        if not created:
-            # si ya existía, sincroniza importes por si estaban en 0
-            update_fields = []
-            if booking.total_amount != quote["total"]:
-                booking.total_amount = quote["total"]; update_fields.append("total_amount")
-            if booking.deposit_amount != deposit:
-                booking.deposit_amount = deposit; update_fields.append("deposit_amount")
-            if booking.balance_due != balance:
-                booking.balance_due = balance; update_fields.append("balance_due")
-            if update_fields:
-                booking.save(update_fields=update_fields)
+        # Usar transacción atómica con lock para prevenir race conditions
+        try:
+            with transaction.atomic():
+                # 1. Bloquear la propiedad para evitar modificaciones concurrentes
+                property = Property.objects.select_for_update().get(pk=property_id)
 
-        messages.success(request, "Reserva creada.")
-        return redirect("payment_start", booking_id=booking.id)
+                # 2. Verificar disponibilidad DENTRO de la transacción
+                if not property.is_available(checkin, checkout, cant_personas):
+                    messages.warning(request, "La propiedad ya no está disponible")
+                    url = f"{reverse('property_detail', kwargs={'pk':property_id})}?checkin={checkin}&checkout={checkout}&cant_personas={cant_personas}"
+                    return redirect(url)
+
+                # 3. Verificar explícitamente que no hay reservas conflictivas
+                # (double-check para mayor seguridad)
+                conflicting_bookings = Booking.objects.filter(
+                    property=property,
+                    status__in=["confirmed", "pending"],
+                    arrival__lt=checkout_dt,
+                    departure__gt=checkin_dt
+                ).exclude(hold_expires_at__lt=now()).exists()
+
+                if conflicting_bookings:
+                    messages.warning(request, "La propiedad ya no está disponible")
+                    url = f"{reverse('property_detail', kwargs={'pk':property_id})}?checkin={checkin}&checkout={checkout}&cant_personas={cant_personas}"
+                    return redirect(url)
+
+                # 4. Calcular precios
+                quote = property.quote_total(checkin_dt.date(), checkout_dt.date())
+                total = quote["total"]
+                deposit = (quote["total"] * Decimal("0.30")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                balance = (quote["total"] - deposit).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+                # 5. Crear o recuperar la reserva
+                booking, created = Booking.objects.get_or_create(
+                    user=request.user,
+                    property=property,
+                    arrival=checkin_dt,
+                    departure=checkout_dt,
+                    defaults={
+                        "person_num": int(cant_personas),
+                        "total_amount": total,
+                        "deposit_amount": deposit,
+                        "balance_due": balance,
+                        "status": "pending",
+                    },
+                )
+
+                if not created:
+                    # Si ya existía, sincronizar importes por si estaban en 0
+                    update_fields = []
+                    if booking.total_amount != quote["total"]:
+                        booking.total_amount = quote["total"]
+                        update_fields.append("total_amount")
+                    if booking.deposit_amount != deposit:
+                        booking.deposit_amount = deposit
+                        update_fields.append("deposit_amount")
+                    if booking.balance_due != balance:
+                        booking.balance_due = balance
+                        update_fields.append("balance_due")
+                    if update_fields:
+                        booking.save(update_fields=update_fields)
+
+                messages.success(request, "Reserva creada.")
+                return redirect("payment_start", booking_id=booking.id)
+
+        except Property.DoesNotExist:
+            messages.error(request, "Propiedad no encontrada")
+            return redirect("home")
+        except Exception as e:
+            messages.error(request, "Error al procesar la reserva. Inténtelo de nuevo.")
+            logger.error(
+                f"Error inesperado creando reserva: property_id={property_id}, user_id={request.user.id}, error={e}",
+                exc_info=True,
+                extra={'property_id': property_id, 'user_id': request.user.id}
+            )
+            return redirect("property_detail", pk=property_id)
     
 class CancelBookingView(LoginRequiredMixin, View):
     login_url = "login"
@@ -305,7 +351,10 @@ class BookingChangeDatesApplyView(LoginRequiredMixin, View):
             new_out = compose_aware_dt(checkout, 12, 0)
         except Exception as e:
             messages.error(request,"Formulario inválido")
-            print(f"Error: {e}")
+            logger.warning(
+                f"Error parseando fechas en cambio de reserva: checkin={checkin}, checkout={checkout}, error={e}",
+                extra={'booking_id': booking.id, 'user_id': request.user.id}
+            )
             return redirect("booking_change_dates_start", pk=booking.id)
 
 

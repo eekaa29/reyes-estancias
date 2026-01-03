@@ -29,13 +29,25 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-mdsb1(#fbr2gh2$p6g8pr2=)hqxq^wv(wqy(_qrp*a3^i!kh9a'
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 
+
+# Security settings for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000  # 1 año
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # Application definition
 
@@ -58,7 +70,7 @@ INSTALLED_APPS = [
 
 
 TAILWIND_APP_NAME = 'theme'
-NPM_BIN_PATH = "/home/ekaitz-martin/.nvm/versions/node/v22.19.0/bin/npm"
+NPM_BIN_PATH = env('NPM_BIN_PATH', default='npm')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -164,10 +176,10 @@ LOGIN_URL = "login"
 
 #Email config
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'sandbox.smtp.mailtrap.io'
-EMAIL_HOST_USER = '60087be488e921'
-EMAIL_HOST_PASSWORD = '0864f324b74a3d'
-EMAIL_PORT = '2525'
+EMAIL_HOST = env('EMAIL_HOST', default='sandbox.smtp.mailtrap.io')
+EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+EMAIL_PORT = env('EMAIL_PORT', default='2525')
 EMAIL_USE_TLS = True
 DEFAULT_FROM_EMAIL = 'no-reply@reyesestancias.com'
 
@@ -177,10 +189,22 @@ STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")  # lo pondrás tras crear el webhook
 
+# iCal Fetch Security Settings
+ICAL_REQUEST_TIMEOUT = env.int('ICAL_REQUEST_TIMEOUT', default=10)  # segundos
+ICAL_MAX_SIZE = env.int('ICAL_MAX_SIZE', default=5 * 1024 * 1024)  # 5 MB en bytes
+ICAL_ALLOWED_HOSTS = env.list('ICAL_ALLOWED_HOSTS', default=[
+    'airbnb.com',
+    'airbnb.es',
+    'airbnb.mx',
+    'calendar.google.com',
+    'booking.com',
+    'vrbo.com',
+    'homeaway.com',
+])
 
 # Celery (Redis como broker y backend)
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/1"  # opcional; útil para ver estados
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/1')
 CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TIMEZONE = "America/Mexico_City"
 CELERY_ENABLE_UTC = True
@@ -189,6 +213,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "payments.tasks.scan_and_charge_balances",
         "schedule": crontab(minute="*/15"),
         "args": (SITE_BASE_URL,),  # usa tu base
+    },
+    "mark-expired-bookings-daily": {
+        "task": "bookings.tasks.mark_expired_bookings",
+        "schedule": crontab(hour=3, minute=0),  # 3:00 AM cada día
+    },
+    "mark-expired-holds-hourly": {
+        "task": "bookings.tasks.mark_expired_holds",
+        "schedule": crontab(minute=0),  # Cada hora en punto
     },
 }
 CELERY_TASK_SERIALIZER = "json"
@@ -200,3 +232,77 @@ CELERY_TASK_EAGER_PROPAGATES = True    # si falla, revienta el test
 
 #ACCOUNTS APP
 AUTH_USER_MODEL = "accounts.User"
+
+# Logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file_security': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'security.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'file_general': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'general.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file_general'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['file_security', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'properties': {
+            'handlers': ['console', 'file_security'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'bookings': {
+            'handlers': ['console', 'file_general'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'payments': {
+            'handlers': ['console', 'file_general'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

@@ -3,14 +3,24 @@ from django.views.generic.list import ListView
 from django.views.generic.detail import DetailView
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
+from django.http import HttpResponse, Http404
+from django.views import View
 from .models import Property, PropertyImage
 from .forms import BookingForm
 from bookings.models import Booking
 from django.db.models import Prefetch
-from core.tzutils import compose_aware_dt 
+from core.tzutils import compose_aware_dt
 from django.utils import timezone
 from datetime import date, timedelta
-from properties.utils.ical import fetch_ical_bookings
+from properties.utils.ical import fetch_ical_bookings, generate_ical_for_property
+import json
+from django.utils.safestring import mark_safe
+import logging
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
+
+# Configurar logger
+logger = logging.getLogger(__name__)
 # Create your views here.
 
 class PropertiesList(ListView):
@@ -64,10 +74,11 @@ class PropertiesList(ListView):
             prop_ids = [p.id for p in props]
             now = timezone.now()
 
-            # Solo confirmed
+            # Solo confirmed que no hayan expirado
             ub = list(
                 Booking.objects
                 .filter(user=user, property_id__in=prop_ids, status="confirmed")
+                .exclude(departure__lt=now)  # Excluir reservas pasadas
                 .only("property_id", "arrival", "departure")
             )
 
@@ -144,13 +155,17 @@ class PropertyDetail(DetailView):
         if self.request.user.is_authenticated:
             booking_id = self.request.GET.get("booking_id")
 
-            base_qs = Booking.objects.filter(user=self.request.user, 
+            base_qs = Booking.objects.filter(user=self.request.user,
             property=self.object).order_by("-id").prefetch_related("payments")
 
             if booking_id:
                 booking = base_qs.filter(pk=booking_id).first()
             else:
-                booking = base_qs.filter(status__in=["pending", "confirmed"]).first()
+                # Solo mostrar reservas activas (no expiradas ni canceladas)
+                now = timezone.now()
+                booking = (base_qs.filter(status__in=["pending", "confirmed"])
+                          .exclude(status="confirmed", departure__lt=now)  # Excluir pasadas
+                          .first())
             
             if booking:
                 context["active_booking"] = booking
@@ -178,12 +193,14 @@ class PropertyDetail(DetailView):
                     while current < end:
                         blocked_dates.append(current.isoformat())
                         current += timedelta(days=1)
-                context["blocked_dates"] = blocked_dates
+                # Serializar como JSON de forma segura
+                context["blocked_dates"] = mark_safe(json.dumps(blocked_dates))
                 context["booked_ranges"] = [
                     f"{start.toordinal()}_{end.toordinal()}" for start, end in blocked_ranges
                 ]
             except Exception as e:
-                context["blocked_dates"] = []
+                # En caso de error, usar lista vacía serializada
+                context["blocked_dates"] = mark_safe(json.dumps([]))
                 context["booked_ranges"] = []
 
         return context
@@ -207,8 +224,72 @@ class PropertyDetail(DetailView):
             return self.render_to_response(context)
 
 
-        
+@method_decorator(ratelimit(key='ip', rate='20/h', method='GET', block=True), name='dispatch')
+class ExportCalendarView(View):
+    """
+    Vista pública para exportar calendario iCal de una propiedad.
+    URL: /properties/calendar/<ical_token>/
+    No requiere autenticación (para que Airbnb pueda acceder).
 
+    Rate limiting: Máximo 20 peticiones por hora por IP para prevenir
+    ataques de enumeración de tokens.
+    """
 
+    def get(self, request, ical_token):
+        # Obtener IP del cliente para logging
+        ip_address = self._get_client_ip(request)
 
+        # Buscar propiedad por token
+        try:
+            property_obj = Property.objects.get(ical_token=ical_token)
 
+            # Log de acceso exitoso (solo en DEBUG o con nivel INFO)
+            logger.info(
+                f"iCal calendar accessed successfully: "
+                f"property={property_obj.name} (ID: {property_obj.id}), "
+                f"token={ical_token[:8]}..., ip={ip_address}"
+            )
+
+        except Property.DoesNotExist:
+            # Log de intento fallido (IMPORTANTE para detectar ataques)
+            logger.warning(
+                f"Invalid iCal token attempt: "
+                f"token={ical_token[:8]}... (length: {len(ical_token)}), "
+                f"ip={ip_address}, "
+                f"user_agent={request.META.get('HTTP_USER_AGENT', 'Unknown')[:100]}"
+            )
+            raise Http404("Calendario no encontrado")
+
+        # Generar calendario
+        cal = generate_ical_for_property(property_obj)
+
+        # Serializar a formato .ics
+        ical_content = cal.to_ical()
+
+        # Crear response
+        response = HttpResponse(ical_content, content_type='text/calendar; charset=utf-8')
+
+        # Nombre de archivo seguro (sanitizar para evitar problemas)
+        filename = self._sanitize_filename(property_obj.name)
+        response['Content-Disposition'] = f'attachment; filename="{filename}.ics"'
+
+        return response
+
+    def _get_client_ip(self, request):
+        """Obtiene la IP real del cliente, considerando proxies."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip = request.META.get('REMOTE_ADDR', 'Unknown')
+        return ip
+
+    def _sanitize_filename(self, name):
+        """Sanitiza el nombre del archivo para evitar problemas."""
+        import re
+        # Remover caracteres problemáticos
+        name = re.sub(r'[^\w\s-]', '', name)
+        # Reemplazar espacios y guiones múltiples por un solo guión bajo
+        name = re.sub(r'[-\s]+', '_', name)
+        # Limitar longitud
+        return name[:50] if name else 'calendario'

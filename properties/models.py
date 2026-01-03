@@ -5,6 +5,10 @@ from decimal import Decimal, ROUND_HALF_UP
 from core.tzutils import compose_aware_dt
 from django.db import models, transaction
 from django.db.models import Q
+import secrets
+import logging
+
+logger = logging.getLogger(__name__)
 # Create your models here.
 
 LIMPIEZA = Decimal("100.00")
@@ -19,34 +23,104 @@ class Property (models.Model):
     address = models.CharField(max_length= 200, verbose_name="Localización")
     latitude = models.FloatField(blank=True, null= True, verbose_name="Latitud")
     longitude = models.FloatField(blank=True, null= True, verbose_name="Altitud")
+    #Importar calendarios desde Airbnb a esta web
     airbnb_ical_url = models.URLField("Calendario iCal de Airbnb", blank=True, null=True)
+    #Exportar calendarios desde esta web a Airbnb 
+    ical_token = models.CharField(max_length=100, blank=True, null=True, unique=True)
+    #Cada vez que llame a save(ya sea desde el admin, desde scripts, views, forms...)se ejecutará la 
+    # función automáticamente y se creará un "ical_token" para la nueva propiedad añadida.
+    #SI no lo hiciese así y simplemente creara una función que hiciese lo mismo, tendría que llamarla 
+    # yo manualmente cada vez que crease una nueva propiedad
+    def save(self, *args, **kwargs):
+        if not self.ical_token:
+            self.ical_token = secrets.token_urlsafe(48)
+        super().save(*args, **kwargs)
+
 
     def is_available(self, checkin, checkout, cant_personas, *, exclude_booking_id=None, buffer_nights=0):
-        qs = self.bookings.filter(status__in=["confirmed", "pending"])
-        qs = qs.exclude(status="pending", hold_expires_at__lt=now())
+        """
+        Verifica si la propiedad está disponible para las fechas dadas.
+
+        Args:
+            checkin: Fecha de check-in (str, date, o datetime)
+            checkout: Fecha de check-out (str, date, o datetime)
+            cant_personas: Número de personas
+            exclude_booking_id: ID de reserva a excluir de la verificación
+            buffer_nights: Noches de buffer a agregar antes/después
+
+        Returns:
+            bool: True si está disponible, False si no
+        """
+        # 1. Parsear y validar fechas
         try:
-            checkin = compose_aware_dt(checkin,  hour=15, minute=0)  # check-in 15:00
-            checkout = compose_aware_dt(checkout, hour=12, minute=0) # check-out 12:00
-        except Exception:
+            checkin_dt = compose_aware_dt(checkin, hour=15, minute=0)
+            checkout_dt = compose_aware_dt(checkout, hour=12, minute=0)
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.warning(
+                f"Error parseando fechas en is_available: checkin={checkin}, checkout={checkout}, error={e}",
+                extra={'property_id': self.id}
+            )
             return False
-        if not checkin or not checkout:
+
+        if not checkin_dt or not checkout_dt:
+            logger.warning(f"Fechas nulas en is_available para propiedad {self.id}")
             return False
-        
-        if self.max_people < int(cant_personas):
+
+        # 2. Validar que checkout sea después de checkin
+        if checkout_dt <= checkin_dt:
+            logger.debug(f"Checkout debe ser después de checkin: {checkin_dt} >= {checkout_dt}")
             return False
-        
+
+        # 3. Validar que no sea en el pasado
+        current_time = now()
+        if checkin_dt < current_time:
+            logger.debug(f"Check-in en el pasado: {checkin_dt} < {current_time}")
+            return False
+
+        # 4. Validar número de noches (mínimo 2, máximo 365)
+        nights = (checkout_dt.date() - checkin_dt.date()).days
+        if nights < 2:
+            logger.debug(f"Estancia demasiado corta: {nights} noche(s), mínimo 2")
+            return False
+        if nights > 365:
+            logger.debug(f"Estancia demasiado larga: {nights} días, máximo 365")
+            return False
+
+        # 5. Validar capacidad
+        try:
+            cant_personas_int = int(cant_personas)
+        except (ValueError, TypeError):
+            logger.warning(f"Número de personas inválido: {cant_personas}")
+            return False
+
+        if self.max_people < cant_personas_int:
+            logger.debug(f"Excede capacidad: {cant_personas_int} personas, máximo {self.max_people}")
+            return False
+
+        # 6. Aplicar buffer si es necesario
+        if buffer_nights:
+            checkin_dt -= timedelta(days=buffer_nights)
+            checkout_dt += timedelta(days=buffer_nights)
+
+        # 7. Verificar conflictos con reservas existentes
+        # Solo consideramos reservas "confirmed" o "pending" (no "expired" ni "cancelled")
+        qs = self.bookings.filter(status__in=["confirmed", "pending"])
+        # Excluir reservas pendientes con hold expirado
+        qs = qs.exclude(status="pending", hold_expires_at__lt=current_time)
+        # Excluir reservas confirmadas que ya pasaron (doble seguridad)
+        qs = qs.exclude(status="confirmed", departure__lt=current_time)
+
         if exclude_booking_id:
             qs = qs.exclude(id=exclude_booking_id)
 
-        if buffer_nights:
-            checkin -= timedelta(days=buffer_nights)
-            checkout += timedelta(days=buffer_nights)
-
-
         for booking in qs:
-            if (booking.arrival < checkout) and (booking.departure > checkin):
+            if (booking.arrival < checkout_dt) and (booking.departure > checkin_dt):
+                logger.debug(
+                    f"Conflicto con reserva {booking.id}: "
+                    f"[{booking.arrival}, {booking.departure}] solapa con [{checkin_dt}, {checkout_dt}]"
+                )
                 return False
-        
+
         return True
     
     def _to_date(self, value):
@@ -121,9 +195,20 @@ class Property (models.Model):
         
         try:
             return get_blocked_dates(self.airbnb_ical_url)
+        except ValueError as e:
+            # Error de validación (host no permitido, timeout, etc.)
+            logger.warning(
+                f"Error de validación al obtener bloqueos iCal para propiedad '{self.name}' (ID: {self.id}): {e}",
+                extra={'property_id': self.id, 'ical_url': self.airbnb_ical_url[:100]}
+            )
+            return []
         except Exception as e:
-            # Puedes loguearlo o ignorarlo si prefieres
-            print(f"[get_blocked_ranges] Error al obtener bloqueos para '{self.name}': {e}")
+            # Error inesperado
+            logger.error(
+                f"Error inesperado al obtener bloqueos iCal para propiedad '{self.name}' (ID: {self.id}): {e}",
+                exc_info=True,
+                extra={'property_id': self.id, 'ical_url': self.airbnb_ical_url[:100]}
+            )
             return []
 
         

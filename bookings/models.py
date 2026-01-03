@@ -64,6 +64,16 @@ class Booking(models.Model):
     class Meta():
         verbose_name = "Reserva"
         verbose_name_plural = "Reservas"
+        indexes = [
+            # Índice para búsquedas de disponibilidad (query más frecuente)
+            models.Index(fields=['property', 'status', 'arrival', 'departure'], name='booking_avail_idx'),
+            # Índice para listados de usuario
+            models.Index(fields=['user', 'status'], name='booking_user_idx'),
+            # Índice para expiración de holds
+            models.Index(fields=['status', 'hold_expires_at'], name='booking_hold_idx'),
+            # Índice para queries por fecha de llegada
+            models.Index(fields=['arrival', 'departure'], name='booking_dates_idx'),
+        ]
 
     def __str__(self):
         return f"{self.property.name} - {self.user.username} - ({self.arrival} => {self.departure})"

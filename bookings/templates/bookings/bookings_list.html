@@ -61,8 +61,10 @@
     {% endif %}
   </div>
   {% empty %}
+  <div class="flex flex-col justify-center items-center gap-4">
     <h1>No hay ninguna reserva en este momento</h1>
-    <a href="{% url 'home' %}">Reservar</a>
+    <a class="inline-flex justify-center items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90" href="{% url 'home' %}">Reservar</a>
+  </div>
   {% endfor %}
 </div>
 {% endblock %}

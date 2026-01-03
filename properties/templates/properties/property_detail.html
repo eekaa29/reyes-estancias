@@ -138,7 +138,8 @@
         const $out = document.getElementById("id_checkout");
 
         // Recibimos directamente del backend la lista de fechas bloqueadas como ["2025-10-29", "2025-10-30", ...]
-        const bookedDates = {{ blocked_dates|safe }};
+        // El JSON ya está correctamente serializado y escapado desde la vista
+        const bookedDates = {{ blocked_dates }};
 
         // Flatpickr para check-in
         const fpIn = flatpickr($in, {

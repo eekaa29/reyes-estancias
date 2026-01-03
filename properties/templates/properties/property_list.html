@@ -36,14 +36,23 @@
             {% endwith %}
           {% endif %}
         {% endwith %}
+        
         <div class="grid grid-cols-2 ">
-          <div class="flex flex-col gap-2 pl-4">
-            <a href="{% url 'property_detail' property.id %}" class="uppercase font-bold tracking-[-0.06em] ">
-              {{ property.name }}
-            </a>
-            <p class="italic"> Desde {{ property.nightly_price }} MXN</p>
-          </div>
+          {% if not checkin or not checkout or not cant_personas %}
+            <div class="flex flex-col gap-2 pl-4">
+              <a href="{% url 'property_detail' property.id %}"  class="uppercase font-bold tracking-[-0.06em] ">
+                {{ property.name }}
+              </a>
+              <p class="italic"> Desde {{ property.nightly_price }} MXN</p>
+            </div>
+          {% endif %}
           {% if checkin and checkout and cant_personas %}
+            <div class="flex flex-col gap-2 pl-4">
+              <a href="{% url 'property_detail' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}"  class="uppercase font-bold tracking-[-0.06em] ">
+                {{ property.name }}
+              </a>
+              <p class="italic"> Desde {{ property.nightly_price }} MXN</p>
+            </div>
             {% if property.user_booking_overlap %}
               <span class="text-blue-600 font-semibold animate-pulse tracking-[-0.06em]">RESERVA REALIZADA</span>
             {% else %}
