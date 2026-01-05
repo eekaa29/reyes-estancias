@@ -6,12 +6,15 @@ from django.utils.timezone import make_aware, now, is_aware
 from urllib.parse import urlparse
 import logging
 from django.conf import settings
+from django.core.cache import cache
+import hashlib
 
 logger = logging.getLogger(__name__)
 
 # Configuración de seguridad para fetch de iCal
 ICAL_REQUEST_TIMEOUT = getattr(settings, 'ICAL_REQUEST_TIMEOUT', 10)  # segundos
 ICAL_MAX_SIZE = getattr(settings, 'ICAL_MAX_SIZE', 5 * 1024 * 1024)  # 5 MB
+ICAL_CACHE_TIMEOUT = getattr(settings, 'ICAL_CACHE_TIMEOUT', 900)  # 15 minutos
 ICAL_ALLOWED_HOSTS = getattr(settings, 'ICAL_ALLOWED_HOSTS', [
     'airbnb.com',
     'airbnb.es',
@@ -27,11 +30,12 @@ def fetch_ical_bookings(ical_url):
     Obtiene reservas de un calendario iCal externo de forma segura.
 
     Protecciones implementadas:
+    - Caché de 15 minutos (configurable) para evitar peticiones repetidas
     - Validación de URL (solo HTTP/HTTPS)
     - Whitelist de hosts permitidos
     - Timeout de conexión
     - Límite de tamaño de respuesta
-    - Logging de errores
+    - Logging de errores y métricas de caché
 
     Args:
         ical_url: URL del calendario iCal
@@ -43,6 +47,17 @@ def fetch_ical_bookings(ical_url):
         ValueError: Si la URL es inválida o el host no está permitido
         requests.exceptions.RequestException: Si hay error en la petición
     """
+    # 0. Intentar obtener del caché primero
+    # Generar clave única basada en la URL (usar hash SHA256 para seguridad)
+    cache_key = f'ical_bookings:{hashlib.sha256(ical_url.encode()).hexdigest()}'
+
+    cached_result = cache.get(cache_key)
+    if cached_result is not None:
+        logger.info(f"iCal cache HIT for {urlparse(ical_url).netloc} (usando datos en caché)")
+        return cached_result
+
+    logger.info(f"iCal cache MISS for {urlparse(ical_url).netloc} (haciendo petición HTTP)")
+
     # 1. Validar que sea una URL válida
     try:
         parsed_url = urlparse(ical_url)
@@ -86,8 +101,7 @@ def fetch_ical_bookings(ical_url):
                 'User-Agent': 'ReyesEstancias/1.0 (Calendar Sync)',
                 'Accept': 'text/calendar, application/octet-stream, */*',
             },
-            allow_redirects=True,  # Permite redirects (max 30 por defecto)
-            max_redirects=5,  # Limitar redirects
+            allow_redirects=True,  # Permite redirects (max 30 por defecto en requests)
         )
         response.raise_for_status()
 
@@ -172,6 +186,11 @@ def fetch_ical_bookings(ical_url):
             continue
 
     logger.info(f"Successfully fetched {len(bookings)} bookings from {host}")
+
+    # Guardar en caché antes de retornar
+    cache.set(cache_key, bookings, ICAL_CACHE_TIMEOUT)
+    logger.info(f"iCal data cached for {ICAL_CACHE_TIMEOUT} seconds ({ICAL_CACHE_TIMEOUT / 60:.1f} minutes)")
+
     return bookings
 
 def get_blocked_dates(ical_url):

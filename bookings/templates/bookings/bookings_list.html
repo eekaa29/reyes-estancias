@@ -55,7 +55,7 @@
         <a class="inline-flex justify-center items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90" href="{% url 'retry_balance' booking_id=booking.id %}">Reintentar pago del balance</a>
       {% endif %}
     {% endif %}
-    {% if  booking.status != "cancelled" %}
+    {% if  booking.status != "cancelled" and  booking.status != "expired" %}
       <a class="inline-flex justify-center items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90" href="{% url 'cancel_booking_sure' booking_id=booking.id %}">Cancelar mi reserva</a>
       <a class="inline-flex justify-center items-center rounded-xl bg-black px-5 py-2 font-medium text-white hover:opacity-90" href="{% url 'booking_change_dates_start' pk=booking.id %}">Modificar fechas</a>
     {% endif %}

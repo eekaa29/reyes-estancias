@@ -6,34 +6,40 @@ from bookings.models import Booking
 from payments.models import Payment
 from .services import charge_offsession_with_fallback, compute_balance_due_snapshot
 from django.db.models import Q
-from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def charge_balance_for_booking(self, booking_id, base_str):
+def charge_balance_for_booking(self, booking_id, base_url):
 
     """
     Cobra el balance de UNA reserva (idempotente).
     Reintenta si hay fallos transitorios.
-    """
 
-    booking = Booking.objects.select_related("property", "user").get(pk=booking_id)
-    base = Decimal(base_str) if base_str is not None else None
+    Args:
+        booking_id: ID de la reserva
+        base_url: URL base del sitio (ej: "https://tu-dominio.com")
+    """
 
     try:
         with transaction.atomic():
-            b = booking.objects.select_for_update().get(pk=booking_id)
+            b = Booking.objects.select_for_update().get(pk=booking_id)
             if b.status != "confirmed":
+                logger.info(f"Booking {booking_id} no está confirmado, omitiendo cobro")
                 return "booking_not_confirmed"
 
             #info mínima
             if not (b.stripe_customer_id and b.stripe_payment_method_id):
+                logger.warning(f"Booking {booking_id} no tiene método de pago guardado")
                 return "missing_method"
 
             # no cobres si no hace falta
             amount = compute_balance_due_snapshot(b)
             if amount <= 0:
+                logger.info(f"Booking {booking_id} no tiene balance pendiente")
                 return "no_balance"
 
             # no cobres si hay top-up pendiente que bloquee
@@ -43,6 +49,7 @@ def charge_balance_for_booking(self, booking_id, base_str):
                 payment_type="deposit",
                 metadata__payment_role="deposit_topup",
                 status__in=["pending", "requires_action"]).exists():
+                logger.info(f"Booking {booking_id} tiene top-up pendiente, omitiendo cobro de balance")
                 return "pending_topup"
 
             # evita doble cargo si ya hay un balance pagado reciente
@@ -51,35 +58,45 @@ def charge_balance_for_booking(self, booking_id, base_str):
                 booking=b,
                 payment_type="balance",
                 status="paid").exists():
+                logger.info(f"Booking {booking_id} ya tiene balance pagado")
                 return "already_paid"
         
         
 
         # fuera del select_for_update para no bloquear durante Stripe
 
+        logger.info(f"Iniciando cobro de balance para booking {booking_id}, monto: ${amount}")
         result = charge_offsession_with_fallback(
-            booking=b, 
+            booking=b,
             request=None,
-            amount=amount, 
-            payment_type="balance", 
-            description="Cargo del 70%", 
-            base_url=base)
+            amount=amount,
+            payment_type="balance",
+            description="Cargo del 70%",
+            base_url=base_url)
         status = result.get("status") if isinstance(result, dict) else result
         if status in ("paid", "already_paid"):
+            logger.info(f"Cobro de balance exitoso para booking {booking_id}")
             return "succeeded"
         if status == "requires_action":
+            logger.warning(f"Cobro de balance requiere acción del usuario para booking {booking_id}")
             return "requires_action"
         if status in ("no_balance", "skipped"):
+            logger.info(f"No hay balance que cobrar para booking {booking_id}")
             return "no_balance"
         if status == "missing_method":
+            logger.warning(f"Falta método de pago para booking {booking_id}")
             return "missing_method"
+
+        logger.error(f"Cobro de balance falló para booking {booking_id}, status: {status}")
         return "failed"
-    
+
 
     except Booking.DoesNotExist:
+        logger.error(f"Booking {booking_id} no encontrado")
         return "not_found"
     except Exception as exc:
         # reintento básico (red/Stripe)
+        logger.error(f"Error al cobrar balance para booking {booking_id}: {exc}")
         raise self.retry(exc=exc)
 
 @shared_task
@@ -102,6 +119,9 @@ def scan_and_charge_balances(base_url):
 
     enqueued = 0
     for b in qs.iterator(): #el iterator sirve para no cargar la qs entera en memoria, de esta manera los leemos en chunks(trozos) de 2000(valor default, pero se puede cambiar con chunk_size=lo que quieras)
-        charge_balance_for_booking(b.id, base_url)
+        # Encolar tarea de forma asíncrona (no bloqueante)
+        charge_balance_for_booking.delay(b.id, base_url)
         enqueued += 1
+
+    logger.info(f"Encoladas {enqueued} tareas de cobro de balance")
     return f"enqueued={enqueued}"

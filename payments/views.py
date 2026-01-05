@@ -506,7 +506,7 @@ class RetryBalancePaymentView(LoginRequiredMixin, View):
         if not self.request.user == booking.user and not self.request.user.is_staff:
             messages.error(request, "No autorizado")
             return redirect("home")
-        
+
         success_url = request.build_absolute_uri(reverse("payment_success")) + f"?booking_id={booking.id}"
         cancel_url = request.build_absolute_uri(reverse("payment_cancel")) + f"?booking_id={booking.id}"
 
@@ -529,8 +529,14 @@ class RetryBalancePaymentView(LoginRequiredMixin, View):
                 }],
                 metadata={"booking_id": str(booking.id), "payment_id": str(payment.id), "type": "balance"},
             )
-            return redirect("start_balance", booking_id=booking.id)
-        
+
+            # Guarda la sesión en la BD para evitar duplicados
+            payment.stripe_checkout_session_id = session.id
+            payment.save(update_fields=["stripe_checkout_session_id"])
+
+            # Redirige directamente a Stripe
+            return redirect(session.url)
+
         session = stripe.checkout.Session.retrieve(payment.stripe_checkout_session_id)
         return redirect(session.url)
 

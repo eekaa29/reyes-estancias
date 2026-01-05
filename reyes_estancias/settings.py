@@ -192,6 +192,7 @@ STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")  # lo pondrás tras crear e
 # iCal Fetch Security Settings
 ICAL_REQUEST_TIMEOUT = env.int('ICAL_REQUEST_TIMEOUT', default=10)  # segundos
 ICAL_MAX_SIZE = env.int('ICAL_MAX_SIZE', default=5 * 1024 * 1024)  # 5 MB en bytes
+ICAL_CACHE_TIMEOUT = env.int('ICAL_CACHE_TIMEOUT', default=900)  # 15 minutos en segundos
 ICAL_ALLOWED_HOSTS = env.list('ICAL_ALLOWED_HOSTS', default=[
     'airbnb.com',
     'airbnb.es',
@@ -201,6 +202,25 @@ ICAL_ALLOWED_HOSTS = env.list('ICAL_ALLOWED_HOSTS', default=[
     'vrbo.com',
     'homeaway.com',
 ])
+
+# Django Cache (usando Redis)
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_CLASS_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+            },
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+        },
+        'KEY_PREFIX': 'reyes_estancias',
+        'TIMEOUT': 300,  # 5 minutos por defecto
+    }
+}
 
 # Celery (Redis como broker y backend)
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0')
@@ -222,31 +242,78 @@ CELERY_BEAT_SCHEDULE = {
         "task": "bookings.tasks.mark_expired_holds",
         "schedule": crontab(minute=0),  # Cada hora en punto
     },
+    "sync-property-calendars-every-30-min": {
+        "task": "properties.tasks.sync_all_property_calendars",
+        "schedule": crontab(minute="*/30"),  # Cada 30 minutos
+    },
 }
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_RESULT_SERIALIZER = "json"
+
+# Configuración de rendimiento y confiabilidad
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True  # Reintentar conexión al inicio
+CELERY_TASK_TIME_LIMIT = 600  # 10 minutos - Límite duro para tareas
+CELERY_TASK_SOFT_TIME_LIMIT = 540  # 9 minutos - Aviso antes del límite duro
+CELERYD_MAX_TASKS_PER_CHILD = 1000  # Reiniciar worker cada 1000 tareas (evita memory leaks)
+CELERY_TASK_ACKS_LATE = True  # Confirmar tareas después de completar (más seguro)
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Prefetch de 1 tarea por worker (mejor distribución)
+
+# Opciones de transporte (Redis)
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'visibility_timeout': 3600,  # 1 hora - Tiempo antes de que una tarea se reintente
+    'fanout_prefix': True,
+    'fanout_patterns': True,
+}
+
+# Configuración de resultados
+CELERY_RESULT_EXPIRES = 86400  # Los resultados expiran en 24 horas
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    'master_name': 'mymaster',  # Para Redis Sentinel (opcional)
+}
+
 # CELERY TESTS
-SITE_BASE_URL = "http://127.0.0.1:8000"
 CELERY_TASK_EAGER_PROPAGATES = True    # si falla, revienta el test
 
 #ACCOUNTS APP
 AUTH_USER_MODEL = "accounts.User"
 
 # Logging configuration
+# Directorio de logs (configurable via variable de entorno)
+LOG_DIR = env('LOG_DIR', default=os.path.join(BASE_DIR, 'logs'))
+LOG_LEVEL = env('LOG_LEVEL', default='DEBUG' if DEBUG else 'INFO')
+
+# Crear directorio de logs si no existe
+os.makedirs(LOG_DIR, exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+
+    # =========================================================================
+    # FORMATTERS - Formatos de salida de logs
+    # =========================================================================
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
+            'format': '[{levelname}] {asctime} {name} {module}.{funcName}:{lineno} - {message}',
             'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
         },
         'simple': {
-            'format': '{levelname} {message}',
+            'format': '[{levelname}] {asctime} - {message}',
             'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+        'celery': {
+            'format': '[{levelname}] {asctime} [Celery] {name} - {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
         },
     },
+
+    # =========================================================================
+    # FILTERS - Filtros condicionales
+    # =========================================================================
     'filters': {
         'require_debug_false': {
             '()': 'django.utils.log.RequireDebugFalse',
@@ -255,54 +322,202 @@ LOGGING = {
             '()': 'django.utils.log.RequireDebugTrue',
         },
     },
+
+    # =========================================================================
+    # HANDLERS - Destinos de logs
+    # =========================================================================
     'handlers': {
+        # Console - Output a terminal (desarrollo)
         'console': {
-            'level': 'INFO',
+            'level': LOG_LEVEL,
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
+
+        # Django general - Logs generales de Django
+        'file_django': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOG_DIR, 'django.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+
+        # Errors - Solo errores críticos (ERROR y CRITICAL)
+        'file_errors': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOG_DIR, 'errors.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+
+        # Security - Logs de seguridad
         'file_security': {
             'level': 'WARNING',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'security.log'),
+            'filename': os.path.join(LOG_DIR, 'security.log'),
             'maxBytes': 1024 * 1024 * 10,  # 10 MB
             'backupCount': 5,
             'formatter': 'verbose',
         },
-        'file_general': {
+
+        # iCal - Logs de sincronización de calendarios
+        'file_ical': {
             'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'general.log'),
+            'filename': os.path.join(LOG_DIR, 'ical.log'),
             'maxBytes': 1024 * 1024 * 10,  # 10 MB
             'backupCount': 5,
+            'formatter': 'verbose',
+        },
+
+        # Payments - Logs de pagos y Stripe
+        'file_payments': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOG_DIR, 'payments.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+
+        # Celery - Logs de tareas Celery
+        'file_celery': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOG_DIR, 'celery.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'celery',
+        },
+
+        # Mail admins - Envía errores críticos por email (solo en producción)
+        'mail_admins': {
+            'level': 'ERROR',
+            'class': 'django.utils.log.AdminEmailHandler',
+            'filters': ['require_debug_false'],
             'formatter': 'verbose',
         },
     },
+
+    # =========================================================================
+    # LOGGERS - Configuración de loggers específicos
+    # =========================================================================
     'loggers': {
+        # Django core
         'django': {
-            'handlers': ['console', 'file_general'],
+            'handlers': ['console', 'file_django'],
             'level': 'INFO',
             'propagate': False,
         },
-        'django.security': {
-            'handlers': ['file_security', 'console'],
+
+        # Django request (accesos HTTP)
+        'django.request': {
+            'handlers': ['console', 'file_django', 'file_errors'],
             'level': 'WARNING',
             'propagate': False,
         },
+
+        # Django security
+        'django.security': {
+            'handlers': ['console', 'file_security', 'mail_admins'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+
+        # Django database queries (útil para debugging, desactivar en prod)
+        'django.db.backends': {
+            'handlers': ['console'] if DEBUG else [],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+
+        # Properties app - General
         'properties': {
-            'handlers': ['console', 'file_security'],
+            'handlers': ['console', 'file_django'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+
+        # Properties - iCal utils (sincronización de calendarios)
+        'properties.utils.ical': {
+            'handlers': ['console', 'file_ical', 'file_errors'],
             'level': 'INFO',
             'propagate': False,
         },
+
+        # Properties - Tasks (tareas Celery de properties)
+        'properties.tasks': {
+            'handlers': ['console', 'file_ical', 'file_celery', 'file_errors'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+
+        # Bookings app
         'bookings': {
-            'handlers': ['console', 'file_general'],
+            'handlers': ['console', 'file_django'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+
+        # Bookings - Tasks (tareas Celery de bookings)
+        'bookings.tasks': {
+            'handlers': ['console', 'file_celery', 'file_errors'],
             'level': 'INFO',
             'propagate': False,
         },
+
+        # Payments app
         'payments': {
-            'handlers': ['console', 'file_general'],
+            'handlers': ['console', 'file_payments', 'file_errors'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+
+        # Payments - Tasks (tareas Celery de payments)
+        'payments.tasks': {
+            'handlers': ['console', 'file_payments', 'file_celery', 'file_errors'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+
+        # Celery - General
+        'celery': {
+            'handlers': ['console', 'file_celery', 'file_errors'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+
+        # Celery - Task execution
+        'celery.task': {
+            'handlers': ['console', 'file_celery'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+
+        # Celery - Beat scheduler
+        'celery.beat': {
+            'handlers': ['console', 'file_celery'],
             'level': 'INFO',
             'propagate': False,
         },
     },
+
+    # =========================================================================
+    # ROOT LOGGER - Captura todos los logs no especificados arriba
+    # =========================================================================
+    'root': {
+        'handlers': ['console', 'file_django', 'file_errors'],
+        'level': LOG_LEVEL,
+    },
 }
+
+# Configuración de ADMINS para recibir emails de errores (solo en producción)
+if not DEBUG:
+    ADMINS = [
+        ('Admin Reyes Estancias', env('ADMIN_EMAIL', default='admin@reyes-estancias.com')),
+    ]
+    MANAGERS = ADMINS

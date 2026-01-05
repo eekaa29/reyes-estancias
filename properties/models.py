@@ -41,6 +41,13 @@ class Property (models.Model):
         """
         Verifica si la propiedad está disponible para las fechas dadas.
 
+        Realiza las siguientes verificaciones:
+        1. Validación de fechas (formato, orden, no en el pasado)
+        2. Validación de número de noches (2-365)
+        3. Validación de capacidad
+        4. Verificación contra calendarios externos (Airbnb, Booking.com)
+        5. Verificación contra reservas locales confirmadas/pendientes
+
         Args:
             checkin: Fecha de check-in (str, date, o datetime)
             checkout: Fecha de check-out (str, date, o datetime)
@@ -50,6 +57,10 @@ class Property (models.Model):
 
         Returns:
             bool: True si está disponible, False si no
+
+        Note:
+            Por seguridad, si falla la verificación del calendario externo,
+            la propiedad se considera NO disponible (fail-safe).
         """
         # 1. Parsear y validar fechas
         try:
@@ -102,7 +113,41 @@ class Property (models.Model):
             checkin_dt -= timedelta(days=buffer_nights)
             checkout_dt += timedelta(days=buffer_nights)
 
-        # 7. Verificar conflictos con reservas existentes
+        # 7. Verificar conflictos con calendarios externos (Airbnb, Booking.com, etc.)
+        if self.airbnb_ical_url:
+            try:
+                from properties.utils.ical import fetch_ical_bookings
+                blocked_ranges = fetch_ical_bookings(self.airbnb_ical_url)
+                checkin_date = checkin_dt.date()
+                checkout_date = checkout_dt.date()
+
+                for start, end in blocked_ranges:
+                    # Verificar solapamiento: dos rangos se solapan si start1 < end2 AND start2 < end1
+                    if start < checkout_date and end > checkin_date:
+                        logger.info(
+                            f"Reserva rechazada por calendario externo para propiedad {self.id} '{self.name}': "
+                            f"rango bloqueado [{start}, {end}] solapa con solicitud [{checkin_date}, {checkout_date}]"
+                        )
+                        return False
+            except ValueError as e:
+                # Error de validación (host no permitido, timeout, etc.)
+                logger.warning(
+                    f"Error de validación al verificar calendario externo para propiedad {self.id}: {e}",
+                    extra={'property_id': self.id, 'ical_url': self.airbnb_ical_url[:100]}
+                )
+                # Por seguridad, si falla la validación, NO permitir la reserva
+                return False
+            except Exception as e:
+                # Error inesperado
+                logger.error(
+                    f"Error inesperado al verificar calendario externo para propiedad {self.id}: {e}",
+                    exc_info=True,
+                    extra={'property_id': self.id, 'ical_url': self.airbnb_ical_url[:100]}
+                )
+                # Por seguridad, si falla el fetch, NO permitir la reserva
+                return False
+
+        # 8. Verificar conflictos con reservas existentes
         # Solo consideramos reservas "confirmed" o "pending" (no "expired" ni "cancelled")
         qs = self.bookings.filter(status__in=["confirmed", "pending"])
         # Excluir reservas pendientes con hold expirado
