@@ -4,5 +4,5 @@ __pychace__/
 venv/
 .venv/
 .DS_Store
-docs/STRIPE_PRODUCCION.md
-docs/CONFIGURACION_ENV.md
+staticfiles/
+*.sqlite3
