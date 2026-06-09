@@ -235,7 +235,7 @@ def compute_refund_plan(booking):
     Devuelve una lista de {'payment': Payment, 'amount': Decimal} en MXN,
     sin efectos secundarios. Política:
       - >7 días antes del check-in: reembolso total del depósito pagado.
-      - 0..7 días: no hay reembolso.
+      - 0..7 días: no hay reembolso se cobra el 50% de penalización.
       - no show / ya pasó el check-in: no hay reembolso.
     """
 
@@ -504,7 +504,8 @@ def compute_balance_due_snapshot(booking) -> Decimal:
     agg = Payment.objects.filter(booking=booking).aggregate(
         dep=Coalesce(Sum("amount", filter=Q(payment_type="deposit", status="paid")), Decimal("0.00")),
         bal=Coalesce(Sum("amount", filter=Q(payment_type="balance", status="paid")), Decimal("0.00")),
+        ext=Coalesce(Sum("amount", filter=Q(payment_type="extension", status="paid")), Decimal("0.00")),
         ref=Coalesce(Sum("refunded_amount", filter=Q(refund_status="paid")), Decimal("0.00")),
     )
-    total_paid_net = agg["dep"] + agg["bal"] - agg["ref"]
+    total_paid_net = agg["dep"] + agg["bal"] + agg["ext"] - agg["ref"]
     return _round(max(booking.total_amount - total_paid_net, Decimal("0.00")))

@@ -263,7 +263,7 @@ def stripe_webhook(request):
                             clog.status = "applied"
                             clog.save(update_fields=["status"])
                             
-                            when = booking.arrival + timedelta(days=2)
+                            when = booking.arrival + timedelta(days=1)
                             reschedule_balance_charge(booking, when)
 
                             # invalida otros logs pendientes
@@ -284,12 +284,30 @@ def stripe_webhook(request):
                     .update(status="void", superseded_at=now()))
                 if "balance_due" not in update:
                     booking.balance_due = compute_balance_due_snapshot(booking)
-                    update.append("balance_due")        
+                    update.append("balance_due")
 
-            
+            # Si es pago de extensión vía checkout: aplicar log pendiente y recalcular balance
+            elif payment.payment_type == "extension":
+                if change_log_id:
+                    try:
+                        clog = BookingChangeLog.objects.select_for_update().get(pk=change_log_id, booking=booking)
+                        if clog.status == "pending":
+                            clog.status = "applied"
+                            clog.save(update_fields=["status"])
+                    except BookingChangeLog.DoesNotExist:
+                        pass
+                if "balance_due" not in update:
+                    booking.balance_due = compute_balance_due_snapshot(booking)
+                    update.append("balance_due")
+
+            # Para cualquier otro pago (balance, etc): recalcular balance_due
+            elif "balance_due" not in update:
+                booking.balance_due = compute_balance_due_snapshot(booking)
+                update.append("balance_due")
+
             booking.save(update_fields=update)
 
-            when = booking.arrival + timedelta(days=2)
+            when = booking.arrival + timedelta(days=1)
             base = settings.SITE_BASE_URL
             reschedule_balance_charge(booking, when, base)
 

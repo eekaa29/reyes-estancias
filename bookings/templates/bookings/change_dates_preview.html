@@ -10,13 +10,22 @@
         <p><span class="font-bold">Nuevo checkout</span> {{checkout}}</p>
     </div>
     <div class="m-4">
-        <p><span class="font-bold">Nuevo depósito</span> {{quote.deposit_target}} MXN</p>
-        {% if quote.dep_topup and quote.dep_topup > 0 %}
-        <p><span class="font-bold">Extra a pagar</span> {{quote.dep_topup}} MXN</p>
-        {% elif quote.dep_refund and quote.dep_refund > 0 %}
-        <p><span class="font-bold">A reembolsar</span> {{quote.dep_refund}} MXN</p>
+        {% if quote.balance_already_paid %}
+            {% if quote.extension_charge and quote.extension_charge > 0 %}
+            <p><span class="font-bold">Pago de extensión</span> {{quote.extension_charge}} MXN</p>
+            <p class="text-sm text-gray-500">Tu reserva ya estaba pagada al completo. Se cobrará únicamente la diferencia por los días adicionales.</p>
+            {% else %}
+            <p class="text-sm text-gray-500">No hay cambio en el importe.</p>
+            {% endif %}
+        {% else %}
+            <p><span class="font-bold">Nuevo depósito</span> {{quote.deposit_target}} MXN</p>
+            {% if quote.dep_topup and quote.dep_topup > 0 %}
+            <p><span class="font-bold">Extra a pagar (depósito)</span> {{quote.dep_topup}} MXN</p>
+            {% elif quote.dep_refund and quote.dep_refund > 0 %}
+            <p><span class="font-bold">A reembolsar</span> {{quote.dep_refund}} MXN</p>
+            {% endif %}
+            <p><span class="font-bold">Nuevo balance pendiente</span> {{quote.balance_next}} MXN</p>
         {% endif %}
-        <p><span class="font-bold">Nuevo balance</span> {{quote.balance_next}} MXN</p>
         <div class="mt-4">
             <p><span class="font-bold">Precio total</span> {{quote.T_new}} MXN</p>
         </div>

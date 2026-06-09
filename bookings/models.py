@@ -12,7 +12,8 @@ class Booking(models.Model):
     ("pending", "Pendiente"),
     ("confirmed", "Confirmado" ),
     ("cancelled", "Cancelado"),
-    ("expired", "Expirada")
+    ("expired", "Expirada"),
+    ("completed", "Completada"),
     ]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="Usuario")
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="bookings")
@@ -57,7 +58,9 @@ class Booking(models.Model):
         return (paid_dep - refunded)
     
     def balance_due_runtime(self):
-        balance_due = self.total_amount - self.net_deposit_paid()
+        paid_ext = self.payments.filter(payment_type="extension", status="paid").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+        paid_bal = self.payments.filter(payment_type="balance", status="paid").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+        balance_due = self.total_amount - self.net_deposit_paid() - paid_bal - paid_ext
         return balance_due if balance_due > 0 else Decimal("0.00")
 
 

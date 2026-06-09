@@ -25,6 +25,7 @@ class Payment(models.Model):
     payment_type = models.CharField(max_length=20, choices=[
         ("deposit","Anticipo"),
         ("balance","Saldo"),
+        ("extension", "Extensión de estancia"),
         ("cancellation_fee", "Penalización por cancelación"),
         ("no_show", "Penalización por no aparecer"),
         ], verbose_name="Tipo de pago")

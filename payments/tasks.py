@@ -52,16 +52,6 @@ def charge_balance_for_booking(self, booking_id, base_url):
                 logger.info(f"Booking {booking_id} tiene top-up pendiente, omitiendo cobro de balance")
                 return "pending_topup"
 
-            # evita doble cargo si ya hay un balance pagado reciente
-
-            if Payment.objects.filter(
-                booking=b,
-                payment_type="balance",
-                status="paid").exists():
-                logger.info(f"Booking {booking_id} ya tiene balance pagado")
-                return "already_paid"
-        
-        
 
         # fuera del select_for_update para no bloquear durante Stripe
 
@@ -103,19 +93,19 @@ def charge_balance_for_booking(self, booking_id, base_url):
 def scan_and_charge_balances(base_url):
 
     """
-    Encola cobros para reservas cuyo check-in fue hace ≥ 48h.
+    Encola cobros para reservas cuyo check-in fue hace ≥ 24h.
     Usa Celery Beat para llamar a esta task (p.ej., cada 15 min).
     """
 
-    cutoff = timezone.now() - timedelta(days=2)
+    cutoff = timezone.now() - timedelta(days=1)
 
-    qs = (Booking.objects.filter(
+    qs = Booking.objects.filter(
         status="confirmed",
         arrival__lte=cutoff,
         balance_due__gt=0,
         stripe_customer_id__isnull=False,
         stripe_payment_method_id__isnull=False,
-    ).exclude(payments__payment_type="balance", payments__status="paid").distinct())
+    )
 
     enqueued = 0
     for b in qs.iterator(): #el iterator sirve para no cargar la qs entera en memoria, de esta manera los leemos en chunks(trozos) de 2000(valor default, pero se puede cambiar con chunk_size=lo que quieras)

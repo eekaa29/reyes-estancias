@@ -293,6 +293,9 @@ class BookingChangeDatesStartView(LoginRequiredMixin, View):
             messages.error(request, "Usuario no autorizado")
             return redirect("home")
         
+        if booking.status == "completed":
+            messages.error(request, "No se pueden modificar las fechas de una reserva ya finalizada")
+            return redirect("bookings_list")
         if booking.status != "confirmed":
             messages.error(request, "Solo se pueden modificar las fechas de reservas confirmadas")
             return redirect("bookings_list")
@@ -366,13 +369,21 @@ class BookingChangeDatesApplyView(LoginRequiredMixin, View):
 
         actions = serv.get("actions", {})
 
-        if "checkout_url" in actions:
-            messages.info(request, f"El cambio ha sido aplicado, se necesita un depósito adicional de {actions["dep_topup"]} MXN")
+        if "checkout_url" in actions and "dep_topup" in actions:
+            messages.info(request, f"El cambio ha sido aplicado, se necesita un depósito adicional de {actions['dep_topup']} MXN")
             return redirect(actions["checkout_url"])
-        
-        if "dep_refund" in actions:
-            messages.success(request, f"Cambios aplicados. El reembolso ha sido creado: {actions["dep_refund"]} MXN")
+
+        if "checkout_url" in actions and "extension_charge" in actions:
+            messages.info(request, f"Fechas actualizadas. Pago de extensión pendiente: {actions['extension_charge']} MXN")
+            return redirect(actions["checkout_url"])
+
+        if "extension_charge" in actions:
+            messages.success(request, f"Extensión aplicada y cobrada correctamente: {actions['extension_charge']} MXN")
             return redirect("bookings_list")
-        
-        messages.success(request, f"Cambio realizado correctamente. Se ha generado un ajuste en el importe del balance.Todo listo")
+
+        if "dep_refund" in actions:
+            messages.success(request, f"Cambios aplicados. El reembolso ha sido creado: {actions['dep_refund']} MXN")
+            return redirect("bookings_list")
+
+        messages.success(request, "Cambio realizado correctamente. Todo listo")
         return redirect("bookings_list")
