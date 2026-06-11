@@ -161,11 +161,11 @@ class CancelBookingView(LoginRequiredMixin, View):
             booking.save(update_fields=["status", "balance_charge_task_id", "balance_charge_eta"])
 
 
-            # 3) Invalida pagos de BALANCE pendientes (y recoge sessions para expirarlas tras commit)
+            # 3) Invalida pagos de BALANCE y EXTENSIÓN pendientes (y recoge sessions para expirarlas tras commit)
             pending_balances = list(
                 Payment.objects.filter(
                     booking=booking,
-                    payment_type="balance",
+                    payment_type__in=["balance", "extension"],
                     status__in=["pending", "requires_action"],
                 ).values_list("id", "stripe_checkout_session_id")
             )
@@ -202,9 +202,19 @@ class CancelBookingView(LoginRequiredMixin, View):
             )
 
         def do_refunds():
-            if plan["refunds"]:
-                for item in plan["refunds"]:
-                    refund_payment(item["payment"], item["amount"])
+            for item in plan.get("refunds", []):
+                try:
+                    result = refund_payment(item["payment"], item["amount"])
+                    if isinstance(result, dict) and "error" in result:
+                        logger.error(
+                            "Reembolso fallido para booking %s, payment %s: %s",
+                            booking.id, item["payment"].id, result,
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Excepción al reembolsar booking %s, payment %s: %s",
+                        booking.id, item["payment"].id, e,
+                    )
 
         transaction.on_commit(do_refunds)
 

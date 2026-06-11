@@ -240,6 +240,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "bookings.tasks.mark_expired_bookings",
         "schedule": crontab(hour=3, minute=0),  # 3:00 AM cada día
     },
+    "mark-completed-bookings-daily": {
+        "task": "bookings.tasks.mark_completed_bookings",
+        "schedule": crontab(hour=3, minute=15),  # 3:15 AM, tras mark-expired
+    },
     "mark-expired-holds-hourly": {
         "task": "bookings.tasks.mark_expired_holds",
         "schedule": crontab(minute=0),  # Cada hora en punto

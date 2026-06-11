@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, redirect
 from .models import Payment
 from django.db.models import Sum
 from properties.models import Property
-from django.db.models import Sum, Q, Value
+from django.db.models import Sum, Q, Value, F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from celery.result import AsyncResult
@@ -238,10 +238,29 @@ def compute_refund_plan(booking):
       - 0..7 días: no hay reembolso se cobra el 50% de penalización.
       - no show / ya pasó el check-in: no hay reembolso.
     """
-
+    from bookings.models import BookingChangeLog
 
     today = now().date()
-    days_before = (booking.arrival.date() - today).days
+
+    # Anti-fraude: si el usuario retrasó el check-in en los últimos 7 días,
+    # usamos la fecha original más temprana para calcular la ventana de reembolso.
+    # Esto evita que alguien mueva las fechas al futuro para obtener reembolso del 100%
+    # y luego cancele inmediatamente.
+    fraud_window = now() - timedelta(days=7)
+    early_change = (
+        BookingChangeLog.objects
+        .filter(
+            booking=booking,
+            status="applied",
+            created_at__gte=fraud_window,
+            new_arrival__gt=F("old_arrival"),
+        )
+        .order_by("old_arrival")
+        .first()
+    )
+    effective_arrival = early_change.old_arrival if early_change else booking.arrival
+
+    days_before = (effective_arrival.date() - today).days
     
     already_paid_total = booking.payments.filter(status="paid").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
     total = booking.total_amount

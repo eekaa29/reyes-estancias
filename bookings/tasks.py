@@ -2,6 +2,7 @@ from celery import shared_task
 from django.utils import timezone
 from django.db.models import Q
 from .models import Booking
+from payments.services import compute_balance_due_snapshot
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,36 @@ def mark_expired_bookings():
     else:
         logger.debug("No hay reservas para marcar como expiradas")
         return "expired=0"
+
+
+@shared_task
+def mark_completed_bookings():
+    """
+    Marca como 'completed' las reservas confirmadas cuya fecha de salida ya pasó
+    y cuyo balance está completamente pagado (compute_balance_due_snapshot == 0).
+
+    Se ejecuta periódicamente via Celery Beat.
+    """
+    now = timezone.now()
+
+    candidates = Booking.objects.filter(
+        status="confirmed",
+        departure__lt=now,
+    )
+
+    completed = 0
+    for booking in candidates.iterator():
+        if compute_balance_due_snapshot(booking) == 0:
+            booking.status = "completed"
+            booking.save(update_fields=["status"])
+            completed += 1
+
+    if completed:
+        logger.info("Marcadas %d reservas como completed.", completed)
+    else:
+        logger.debug("No hay reservas para marcar como completed.")
+
+    return f"completed={completed}"
 
 
 @shared_task
