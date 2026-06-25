@@ -8,3 +8,37 @@
     </a>
   </li>
 {% endblock %}
+
+{% block after_field_sets %}
+  {{ block.super }}
+  {% if original.ical_token %}
+  <fieldset class="module aligned">
+    <h2>Sincronización con Airbnb</h2>
+    <div class="form-row">
+      <div>
+        <label><strong>URL de exportación iCal</strong></label>
+        <p style="margin-top:4px;font-size:13px;color:#666;">
+          Copia esta URL y añádela en Airbnb como calendario externo
+          (<em>Calendario → Disponibilidad → Conectar a otro calendario → Importar</em>).
+          Airbnb consultará esta URL periódicamente y bloqueará las fechas reservadas en esta web.
+        </p>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+          <input
+            id="ical-export-url"
+            type="text"
+            readonly
+            value="{{ request.scheme }}://{{ request.get_host }}{% url 'export_calendar' original.ical_token %}"
+            style="width:520px;padding:4px 8px;font-family:monospace;font-size:13px;border:1px solid #ccc;border-radius:4px;"
+          >
+          <button
+            type="button"
+            onclick="navigator.clipboard.writeText(document.getElementById('ical-export-url').value).then(function(){this.textContent='Copiado';}.bind(this))"
+            style="padding:4px 12px;cursor:pointer;">
+            Copiar
+          </button>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+  {% endif %}
+{% endblock %}

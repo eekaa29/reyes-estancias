@@ -207,7 +207,8 @@ def get_blocked_dates(ical_url):
 
 def generate_ical_for_property(property_obj):
     """
-    Genera un calendario iCal con las reservas confirmadas de una propiedad.
+    Genera un calendario iCal con las reservas confirmadas y pendientes (hold activo)
+    de una propiedad, para que Airbnb bloquee esas fechas.
 
     Args:
         property_obj: Instancia de Property
@@ -215,7 +216,8 @@ def generate_ical_for_property(property_obj):
     Returns:
         Calendar: Objeto icalendar.Calendar listo para serializar
     """
-    # Crear calendario
+    from django.db.models import Q
+
     cal = Calendar()
     cal.add('prodid', '-//Reyes Estancias//Calendario de Reservas//ES')
     cal.add('version', '2.0')
@@ -224,24 +226,26 @@ def generate_ical_for_property(property_obj):
     cal.add('x-wr-calname', f'Reservas - {property_obj.name}')
     cal.add('x-wr-timezone', 'America/Mexico_City')
 
-    # Obtener reservas confirmadas
-    confirmed_bookings = property_obj.bookings.filter(status='confirmed').order_by('arrival')
+    current_time = now()
 
-    # Crear eventos para cada reserva
-    for booking in confirmed_bookings:
+    # Confirmed + pending con hold todavía vigente
+    bookings = property_obj.bookings.filter(
+        Q(status='confirmed') |
+        Q(status='pending', hold_expires_at__gt=current_time)
+    ).order_by('arrival')
+
+    for booking in bookings:
         event = Event()
 
-        # Campos obligatorios
         event.add('dtstart', booking.arrival)
         event.add('dtend', booking.departure)
-        event.add('dtstamp', now())
+        event.add('dtstamp', current_time)
         event.add('summary', 'Reservado')
         event.add('uid', f'booking_{booking.id}@reyesestancias.com')
 
-        # Campos opcionales pero recomendados
         event.add('status', 'CONFIRMED')
-        event.add('transp', 'OPAQUE')  # Marca como ocupado
-        event.add('description', f'Reserva confirmada para {booking.person_num} persona(s)')
+        event.add('transp', 'OPAQUE')
+        event.add('description', f'Reserva para {booking.person_num} persona(s)')
 
         cal.add_component(event)
 
