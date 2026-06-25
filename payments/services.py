@@ -467,57 +467,36 @@ def create_deposit_topup_checkout(booking, request, amount,
 
     return {"status": "pending", "payment":payment, "checkout_url": session.url}
 
-def trigger_refund_for_deposit_diff(booking, amount, prefer_single = True):
-
+def trigger_refund_for_reduction(booking, amount):
     """
-    Reembolsa `amount` (MXN) del depósito ya pagado.
-    - prefer_single=True: si cabe, hace UN SOLO refund contra el último pago de depósito.
-    Si no cabe, reparte contra pagos anteriores (Stripe requiere un refund por PaymentIntent).
-    Devuelve lista de resultados [{'payment_id', 'requested', 'result'}, ...].
-    Si amount cabe en el último pago (normal), se hace un único refund.
-
-    Si no cabe (ej.: top-up de $60 y debes devolver $70), se harán dos refunds: 
-    $60 al último + $10 al anterior. No es “raro”; es cómo Stripe lo exige
+    Reembolsa `amount` MXN cuando se reduce la estancia con el balance ya pagado.
+    Busca pagos en orden: extension → balance → deposit (más reciente primero).
+    Stripe exige un refund por PaymentIntent, por lo que puede generar varios refunds.
     """
-
     remaining = _round(amount or Decimal("0.00"))
-
     result = []
 
     if remaining <= 0:
         return result
-    
-    deposits = (booking.payments.filter(payment_type="deposit", status="paid").order_by("-id"))
 
-    if prefer_single:
-        last = deposits.first()
-        if not last:
-            return result
-        avaliable = max(last.amount - getattr(last, "refunded_amount", Decimal("0.00")), Decimal("0.00"))
-        
-        if remaining <= avaliable:
-            refund = refund_payment(last, remaining, reason="requested_by_customer")
-            result.append({"payment_id": last.id, "requested": remaining, "result": refund})
-            return result
-    
-    #En caso de que no se pueda cubrir todo el reembolso con el último depósito cobrado:
-
-    for deposit in deposits:
-        if remaining <=0:
+    for ptype in ("extension", "balance", "deposit"):
+        if remaining <= 0:
             break
-        refunded = getattr(deposit, "refunded_amount", Decimal("0.00"))
-        available = max(deposit.amount - refunded, Decimal("0.00"))
-        if available <= 0:
-            continue
-        to_refund = _round(min(available, remaining))
-        refund = refund_payment(deposit, to_refund, reason="requested_by_customer")
-        result.append({
-            "payment_id":deposit.id,
-            "requested":to_refund,
-            "result": refund,
-        })
-        remaining -= to_refund
+        payments = booking.payments.filter(payment_type=ptype, status="paid").order_by("-id")
+        for payment in payments:
+            if remaining <= 0:
+                break
+            refunded = getattr(payment, "refunded_amount", Decimal("0.00"))
+            available = max(payment.amount - refunded, Decimal("0.00"))
+            if available <= 0:
+                continue
+            to_refund = _round(min(available, remaining))
+            refund = refund_payment(payment, to_refund, reason="requested_by_customer")
+            result.append({"payment_id": payment.id, "requested": to_refund, "result": refund})
+            remaining -= to_refund
+
     return result
+
 
 def compute_balance_due_snapshot(booking) -> Decimal:
     agg = Payment.objects.filter(booking=booking).aggregate(

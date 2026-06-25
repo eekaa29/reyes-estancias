@@ -30,8 +30,10 @@ def quote_change_booking_dates(booking, new_in, new_out):
     if booking.balance_paid():
         if T_new > T_old:
             extension_charge = _round(T_new - T_old)
+            extension_refund = Decimal("0.00")
         else:
             extension_charge = Decimal("0.00")
+            extension_refund = _round(T_old - T_new)
         return {
             "ok": True,
             "preview": True,
@@ -42,6 +44,7 @@ def quote_change_booking_dates(booking, new_in, new_out):
             "deposit_target": _round(T_new * DEPOSIT_RATE),
             "balance_already_paid": True,
             "extension_charge": extension_charge,
+            "extension_refund": extension_refund,
         }
 
     dep_topup = Decimal("0.00")
@@ -95,7 +98,7 @@ def apply_change_booking_dates(booking, new_in, new_out, *, actor_user, request=
 
         actions = {}
 
-        # Caso C: balance ya pagado => cobrar diferencia directamente como extensión
+        # Caso C: balance ya pagado
         if quote.get("balance_already_paid") and quote["extension_charge"] > 0:
             booking.arrival = new_in
             booking.departure = new_out
@@ -152,6 +155,43 @@ def apply_change_booking_dates(booking, new_in, new_out, *, actor_user, request=
                 clog.status = "superseded"
                 clog.save(update_fields=["status"])
                 return {"ok": False, "msg": "No se pudo procesar el cobro de extensión"}
+
+            return {"ok": True, "actions": actions, "T_new": quote["T_new"]}
+
+        # Caso C2: balance ya pagado + reducción de estancia → reembolsar diferencia
+        if quote.get("balance_already_paid"):
+            extension_refund = quote.get("extension_refund", Decimal("0.00"))
+
+            booking.arrival = new_in
+            booking.departure = new_out
+            booking.total_amount = _round(quote["T_new"])
+            booking.deposit_amount = _round(quote["deposit_target"])
+            booking.balance_due = Decimal("0.00")
+            booking.save(update_fields=["arrival", "departure", "total_amount", "deposit_amount", "balance_due"])
+
+            clog = BookingChangeLog.objects.create(
+                booking=booking,
+                actor=actor_user,
+                old_arrival=old_in,
+                old_departure=old_out,
+                new_arrival=new_in,
+                new_departure=new_out,
+                old_T=_round(old_total),
+                new_T=_round(quote["T_new"]),
+                paid_dep=_round(paid_dep),
+                deposit_topup=Decimal("0.00"),
+                deposit_target=_round(quote["deposit_target"]),
+                deposit_refund=Decimal("0.00"),
+                old_balance=_round(old_balance),
+                new_balance_due=Decimal("0.00"),
+                status="applied",
+            )
+
+            actions = {}
+            if extension_refund > 0:
+                refund_results = trigger_refund_for_reduction(booking, extension_refund)
+                actions["extension_refund"] = extension_refund
+                actions["refund_results"] = refund_results
 
             return {"ok": True, "actions": actions, "T_new": quote["T_new"]}
 
@@ -227,7 +267,7 @@ def apply_change_booking_dates(booking, new_in, new_out, *, actor_user, request=
         )
         actions = {}
         if quote["dep_refund"] > 0:
-            refund = trigger_refund_for_deposit_diff(booking, quote["dep_refund"])
+            refund = trigger_refund_for_reduction(booking, quote["dep_refund"])
             actions.update({"dep_refund":quote["dep_refund"], "refund_result":refund})
                 
             
