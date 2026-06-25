@@ -44,22 +44,22 @@
         <div class="relative z-10 w-full flex flex-col items-start justify-center pb-10 text-white gap-6 pl-4 md:pl-24">
             <h1 class="text-xl md:text-7xl uppercase tracking-[-0.06em] mb-8 md-28">{{property.name}}</h1>
                 <p class="text-md  tracking-[-0.06em]">{{property.description}}</p>
-                <div class="font-bold uppercase flex text-md md:text-xl">
+                <div class="flex text-md md:text-xl">
                     <p class="max-w-96 justify-start tracking-[-0.06em]">{{property.address}}</p>
-                    <p class="ml-20 md:ml-96">CAPACIDAD | {{property.max_people}}</p>
+                    <p class="ml-20 md:ml-96">Capacidad | {{property.max_people}}</p>
                 </div>
                 {% if checkin and checkout and cant_personas %}
                     {% if active_booking and deposit_payment %}
                         <p>Ya tienes una reserva para esta propiedad.</p>
                         <a href="{% url 'bookings_list' %}">Gestionar mi reserva</a>
                     {% elif available %}
-                        <div class="flex flex-col text-xl gap-6">
-                            <p>Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
-                            <a class="animate-bounce italic" href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a>
+                        <div>
+                            <p class="text-xl mb-2">Disponible para las fechas {{checkin}} a {{checkout}} para {{cant_personas}}</p>
+                            <button class="bg-white p-2 rounded hover:bg-gray-200"><a class="text-xl font-semibold text-black" href="{% url 'create_booking' property.id %}?checkin={{ checkin }}&checkout={{ checkout }}&cant_personas={{ cant_personas }}">Reservar ahora</a></button>
                         </div>
                     {% else %}
                         <p class="text-zinc-100 font-semibold uppercase text-md md:text-xl">Propiedad no disponible para las fechas seleccionadas</p>
-                        <a href="{% url 'property_detail' property.id %}" class="italic animate-bounce text-xl md:text-2xl">Modificar fechas</a>
+                        <button class="bg-white p-2 rounded hover:bg-gray-200"><a href="{% url 'property_detail' property.id %}" class="text-xl font-semibold text-black">Modificar fechas</a></button>
                     {% endif %}
                 {% else %}
                     {% if active_booking and deposit_payment %}
