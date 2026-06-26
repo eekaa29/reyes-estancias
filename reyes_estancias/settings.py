@@ -51,7 +51,54 @@ if not DEBUG:
 
 # Application definition
 
+JAZZMIN_SETTINGS = {
+    "site_title": "Reyes Estancias",
+    "site_header": "Reyes Estancias",
+    "site_brand": "Reyes Estancias",
+    "welcome_sign": "Bienvenido al panel de administración",
+    "copyright": "Reyes Estancias",
+    "search_model": ["bookings.Booking", "accounts.CustomUser"],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "hide_apps": [],
+    "order_with_respect_to": [
+        "bookings",
+        "properties",
+        "payments",
+        "accounts",
+        "registration",
+    ],
+    "icons": {
+        "bookings.Booking": "fas fa-calendar-check",
+        "bookings.BookingChangeLog": "fas fa-history",
+        "properties.Property": "fas fa-home",
+        "properties.PropertyImage": "fas fa-images",
+        "payments.Payment": "fas fa-credit-card",
+        "payments.RefundLog": "fas fa-undo",
+        "accounts.CustomUser": "fas fa-users",
+        "auth.Group": "fas fa-shield-alt",
+    },
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+    "related_modal_active": True,
+    "show_ui_builder": False,
+    "custom_css": "admin/css/custom_admin.css",
+    "changeform_format": "horizontal_tabs",
+    "language_chooser": False,
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar": "navbar-white navbar-light",
+    "navbar_fixed": True,
+    "sidebar": "sidebar-light-primary",
+    "sidebar_fixed": True,
+    "accent": "accent-primary",
+    "theme": "flatly",
+    "default_theme_mode": "light",
+}
+
 INSTALLED_APPS = [
+    'jazzmin',
     'registration',
     'django.contrib.admin',
     'django.contrib.auth',

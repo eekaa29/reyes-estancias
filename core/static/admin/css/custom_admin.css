@@ -1,0 +1,300 @@
+/* ============================================================
+   PERSONALIZACIÓN DEL PANEL DE ADMINISTRACIÓN
+   Cambia los valores de las variables para ajustar colores.
+   ============================================================ */
+
+:root {
+    /* Color principal (navbar, sidebar activo, botón primario) */
+    --admin-primary: #2563eb;        /* azul */
+
+    /* Color de acento (hover, badges, links) */
+    --admin-accent: #1d4ed8;
+
+    /* Color de texto general */
+    --admin-text: #111827;
+
+    /* Color de fondo del body */
+    --admin-bg: #f8fafc;
+
+    /* Color de fondo de las tarjetas/tablas */
+    --admin-card-bg: #ffffff;
+
+    /* Color del sidebar */
+    --admin-sidebar-bg: #ffffff;
+    --admin-sidebar-text: #1e293b;
+    --admin-sidebar-active-bg: var(--admin-primary);
+    --admin-sidebar-active-text: #ffffff;
+}
+
+/* --- BODY / FONDO GENERAL --- */
+body {
+    color: var(--admin-text) !important;
+    background-color: var(--admin-bg) !important;
+}
+
+/* --- NAVBAR SUPERIOR --- */
+.app-header {
+    background-color: var(--admin-card-bg) !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.app-header .navbar-brand,
+.app-header .nav-link {
+    color: var(--admin-text) !important;
+}
+
+/* --- SIDEBAR --- */
+.app-sidebar {
+    background-color: var(--admin-sidebar-bg) !important;
+}
+
+.app-sidebar .nav-link {
+    color: var(--admin-sidebar-text) !important;
+}
+
+.app-sidebar .nav-link:hover,
+.app-sidebar .nav-link.active {
+    background-color: var(--admin-sidebar-active-bg) !important;
+    color: var(--admin-sidebar-active-text) !important;
+}
+
+.app-sidebar .nav-header {
+    color: #64748b !important;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* --- CONTENIDO PRINCIPAL --- */
+.app-main,
+.app-content {
+    background-color: var(--admin-bg) !important;
+}
+
+/* --- TARJETAS / MÓDULOS --- */
+.card {
+    background-color: var(--admin-card-bg) !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+}
+
+.card-header {
+    background-color: var(--admin-card-bg) !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    font-weight: 600;
+    color: var(--admin-text) !important;
+}
+
+/* --- BOTONES --- */
+.btn-primary {
+    background-color: var(--admin-primary) !important;
+    border-color: var(--admin-primary) !important;
+    color: #fff !important;
+}
+
+.btn-primary:hover {
+    background-color: var(--admin-accent) !important;
+    border-color: var(--admin-accent) !important;
+}
+
+/* Botón guardar principal */
+input[type="submit"].default,
+.submit-row input[type="submit"] {
+    background-color: var(--admin-primary) !important;
+    border-color: var(--admin-primary) !important;
+    color: #fff !important;
+    border-radius: 6px !important;
+}
+
+/* --- BOTONES AÑADIR / MODIFICAR EN LAS CARDS DEL DASHBOARD --- */
+.addlink,
+.changelink {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none !important;
+    background-color: #2563eb !important;   /* verde oscuro */
+    color: #fff !important;              /* letra verde claro */
+    border: 1px solid #4d7ce2 !important;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.addlink:hover,
+.changelink:hover {
+    background-color: #1d4ed8 !important;
+    color: #fff !important;
+}
+
+/* --- TABLAS --- */
+#result_list thead th {
+    background-color: #f1f5f9 !important;
+    color: var(--admin-text) !important;
+    border-bottom: 2px solid #e2e8f0 !important;
+}
+
+#result_list tbody tr:hover {
+    background-color: #f0f7ff !important;
+}
+
+/* ============================================================
+   BOTONES POR SECCIÓN
+   Django añade clases al <body> según la app/modelo activo.
+   Cambia solo los colores de cada bloque para personalizar
+   cada sección de forma independiente.
+   ============================================================ */
+
+/* Selectores comunes de botones dentro de cada sección */
+.section-btn {
+    background-color: var(--section-btn-bg) !important;
+    border-color: var(--section-btn-border) !important;
+    color: var(--section-btn-text) !important;
+}
+.section-btn:hover {
+    background-color: var(--section-btn-bg-hover) !important;
+    color: var(--section-btn-text-hover) !important;
+}
+
+/* --- PROPIEDADES (properties.Property, properties.PropertyImage) --- */
+body.app-properties {
+    --section-btn-bg:       #2563eb;
+    --section-btn-bg-hover: #1d4ed8;
+    --section-btn-border:   #2563eb;
+    --section-btn-text:     #ffffff;
+    --section-btn-text-hover: #ffffff;
+}
+body.app-properties .btn,
+body.app-properties .submit-row input[type="submit"],
+body.app-properties .object-tools a {
+    background-color: var(--section-btn-bg) !important;
+    border-color: var(--section-btn-border) !important;
+    color: var(--section-btn-text) !important;
+}
+body.app-properties .btn:hover,
+body.app-properties .submit-row input[type="submit"]:hover,
+body.app-properties .object-tools a:hover {
+    background-color: var(--section-btn-bg-hover) !important;
+    color: var(--section-btn-text-hover) !important;
+}
+
+/* --- RESERVAS (bookings.Booking) --- */
+body.app-bookings {
+    --section-btn-bg:       #2563eb;
+    --section-btn-bg-hover: #1d4ed8;
+    --section-btn-border:   #2563eb;
+    --section-btn-text:     #ffffff;
+    --section-btn-text-hover: #ffffff;
+}
+body.app-bookings .btn,
+body.app-bookings .submit-row input[type="submit"],
+body.app-bookings .object-tools a {
+    background-color: var(--section-btn-bg) !important;
+    border-color: var(--section-btn-border) !important;
+    color: var(--section-btn-text) !important;
+}
+body.app-bookings .btn:hover,
+body.app-bookings .submit-row input[type="submit"]:hover,
+body.app-bookings .object-tools a:hover {
+    background-color: var(--section-btn-bg-hover) !important;
+    color: var(--section-btn-text-hover) !important;
+}
+
+/* --- REGISTRO DE CAMBIOS (bookings.BookingChangeLog) --- */
+body.app-bookings.model-bookingchangelog {
+    --section-btn-bg:       #2563eb;
+    --section-btn-bg-hover: #1d4ed8;
+    --section-btn-border:   #2563eb;
+    --section-btn-text:     #ffffff;
+    --section-btn-text-hover: #ffffff;
+}
+
+/* --- PAGOS (payments.Payment) --- */
+body.app-payments {
+    --section-btn-bg:       #2563eb;
+    --section-btn-bg-hover: #1d4ed8;
+    --section-btn-border:   #2563eb;
+    --section-btn-text:     #ffffff;
+    --section-btn-text-hover: #ffffff;
+}
+body.app-payments .btn,
+body.app-payments .submit-row input[type="submit"],
+body.app-payments .object-tools a {
+    background-color: var(--section-btn-bg) !important;
+    border-color: var(--section-btn-border) !important;
+    color: var(--section-btn-text) !important;
+}
+body.app-payments .btn:hover,
+body.app-payments .submit-row input[type="submit"]:hover,
+body.app-payments .object-tools a:hover {
+    background-color: var(--section-btn-bg-hover) !important;
+    color: var(--section-btn-text-hover) !important;
+}
+
+/* --- REGISTRO DE REEMBOLSOS (payments.RefundLog) --- */
+body.app-payments.model-refundlog {
+    --section-btn-bg:       #2563eb;
+    --section-btn-bg-hover: #1d4ed8;
+    --section-btn-border:   #2563eb;
+    --section-btn-text:     #ffffff;
+    --section-btn-text-hover: #ffffff;
+}
+
+/* --- USUARIOS (accounts.CustomUser) --- */
+body.app-accounts {
+    --section-btn-bg:       #2563eb;
+    --section-btn-bg-hover: #1d4ed8;
+    --section-btn-border:   #2563eb;
+    --section-btn-text:     #ffffff;
+    --section-btn-text-hover: #ffffff;
+}
+body.app-accounts .btn,
+body.app-accounts .submit-row input[type="submit"],
+body.app-accounts .object-tools a {
+    background-color: var(--section-btn-bg) !important;
+    border-color: var(--section-btn-border) !important;
+    color: var(--section-btn-text) !important;
+}
+body.app-accounts .btn:hover,
+body.app-accounts .submit-row input[type="submit"]:hover,
+body.app-accounts .object-tools a:hover {
+    background-color: var(--section-btn-bg-hover) !important;
+    color: var(--section-btn-text-hover) !important;
+}
+
+/* --- GRUPOS (auth.Group) --- */
+body.app-auth {
+    --section-btn-bg:       #2563eb;
+    --section-btn-bg-hover: #1d4ed8;
+    --section-btn-border:   #2563eb;
+    --section-btn-text:     #ffffff;
+    --section-btn-text-hover: #ffffff;
+}
+body.app-auth .btn,
+body.app-auth .submit-row input[type="submit"],
+body.app-auth .object-tools a {
+    background-color: var(--section-btn-bg) !important;
+    border-color: var(--section-btn-border) !important;
+    color: var(--section-btn-text) !important;
+}
+body.app-auth .btn:hover,
+body.app-auth .submit-row input[type="submit"]:hover,
+body.app-auth .object-tools a:hover {
+    background-color: var(--section-btn-bg-hover) !important;
+    color: var(--section-btn-text-hover) !important;
+}
+
+/* --- LINKS --- */
+a {
+    color: var(--admin-primary) !important;
+}
+
+a:hover {
+    color: var(--admin-accent) !important;
+}
+
+/* --- BREADCRUMBS --- */
+.breadcrumb-item a {
+    color: var(--admin-primary) !important;
+}
