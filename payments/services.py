@@ -77,7 +77,7 @@ def charge_offsession_with_fallback(
         return {"status": "skipped", "msg": "Importe cero"}
 
     if not booking.balance_due or booking.balance_due <= 0:
-        return  {"status": "no balance", "payment": payment}
+        return {"status": "no_balance", "payment": payment}
     
     if not (booking.stripe_customer_id and booking.stripe_payment_method_id):
         return {"status": "missing_method", "payment": payment}

@@ -97,7 +97,7 @@ def scan_and_charge_balances(base_url):
     Usa Celery Beat para llamar a esta task (p.ej., cada 15 min).
     """
 
-    cutoff = timezone.now() - timedelta(days=1)
+    cutoff = timezone.now() - timedelta(hours=48)
 
     qs = Booking.objects.filter(
         status="confirmed",
